@@ -4520,109 +4520,135 @@ async function q(table, select='*', filters=[]){
   return data||[];
 }
 
-async function loadRelationalData(){
+async function loadRelationalData(options={}){
   if(!sb) return;
+  const publicOnly=!!options.publicOnly;
+  const user=options.user||currentUser;
   try{
-    /* ---------- identities ---------- */
-    const profiles=await q('profiles','*');
-    const teachers=profiles.filter(p=>p.role==='teacher');
-    const portalProfiles=profiles.filter(p=>p.role==='student');
-    REL_V6.teacherMap.clear(); REL_V6.portalMap.clear();
-
-    db.teachers=teachers.map(p=>{
-      const t={id:String(p.id),_profileId:String(p.id),name:p.full_name||'',contact:p.contact||p.phone||'',pin:String(p.pin||''),students:[],transactions:[],diary:[],offlineMarks:[],copyCheckins:[],projects:[],profile:{}};
-      REL_V6.teacherMap.set(String(p.id),String(p.id));
-      REL_V6.teacherMap.set(cleanPhone(p.contact||p.phone||''),String(p.id));
-      return t;
-    });
-    db.students=portalProfiles.map(p=>{
-      const sid=p.student_code||p.contact||p.id;
-      const s={id:String(sid),_profileId:String(p.id),name:p.full_name||'',contact:p.contact||p.phone||'',pin:String(p.pin||''),registeredAt:p.created_at||today(),teacherIds:[],profile:{}};
-      REL_V6.portalMap.set(String(p.id),s.id); if(p.student_code) REL_V6.portalMap.set(String(p.student_code).toUpperCase(),s.id);
-      return s;
-    });
-
-    /* ---------- teacher-managed students ---------- */
-    const rs=await q('students','*');
-    for(const r of rs){
-      const t=db.teachers.find(x=>String(x.id)===String(r.teacher_id));
-      if(!t) continue;
-      const s={
-        id:String(r.id), _relId:String(r.id), type:r.student_type||'tuition', name:r.name||'',
-        father:r.father_name||'', contact:r.contact||'', className:r.class_name||'', roll:r.roll||'',
-        fee:Number(r.monthly_fee)||0, billing:r.billing==='prepaid'?'prepaid':'postpaid',
-        joinedMonth:r.joined_month||monthNow(), weakness:r.weakness||'', attendance:{}, monthlyAttendance:r.monthly_attendance||{},
-        portalId:r.portal_id||'', portalLinked:!!r.portal_id
-      };
-      t.students.push(s);
-      if(s.portalId){ const ps=db.students.find(x=>String(x.id).toUpperCase()===String(s.portalId).toUpperCase()); if(ps){ ps.teacherIds=Array.isArray(ps.teacherIds)?ps.teacherIds:[]; if(!ps.teacherIds.includes(t.id)) ps.teacherIds.push(t.id); } }
+    /*
+      IMPORTANT V6 FIX:
+      Never read protected relational tables during public page startup.
+      The previous version loaded attendance/fees/etc. before login, which
+      caused "permission denied for table attendance" on GitHub/Netlify.
+      Protected data is loaded only after a teacher/student is identified.
+    */
+    if(publicOnly){
+      REL_V6.loaded=true;
+      refreshAllViews();
+      return;
     }
 
-    /* ---------- relational child tables ---------- */
-    const att=await q('attendance','*');
-    for(const a of att){
-      const t=db.teachers.find(x=>String(x.id)===String(a.teacher_id)); const s=t?.students.find(x=>String(x.id)===String(a.student_id));
-      if(s) s.attendance[String(a.attendance_date)]=a.status;
+    /* ---------- identities: load only the current account ---------- */
+    if(user?.role==='teacher'){
+      const {data:profiles,error:pe}=await sb.from('profiles').select('*').eq('id',String(user.id)).limit(1);
+      if(pe) throw pe;
+      const p=profiles?.[0];
+      if(!p) throw new Error('Teacher profile could not be loaded.');
+      const t={id:String(p.id),_profileId:String(p.id),name:p.full_name||user.name||'',contact:p.contact||p.phone||user.contact||'',pin:String(p.pin||''),students:[],transactions:[],diary:[],offlineMarks:[],copyCheckins:[],projects:[],profile:{}};
+      REL_V6.teacherMap.clear(); REL_V6.portalMap.clear();
+      REL_V6.teacherMap.set(String(t.id),String(t.id));
+      REL_V6.teacherMap.set(cleanPhone(t.contact),String(t.id));
+      db.teachers=[t];
+      db.students=[];
+
+      const {data:rs,error:se}=await sb.from('students').select('*').eq('teacher_id',t.id);
+      if(se) throw se;
+      for(const r of (rs||[])){
+        const st={id:String(r.id),_relId:String(r.id),type:r.student_type||'tuition',name:r.name||'',father:r.father_name||'',contact:r.contact||'',className:r.class_name||'',roll:r.roll||'',fee:Number(r.monthly_fee)||0,billing:r.billing==='prepaid'?'prepaid':'postpaid',joinedMonth:r.joined_month||monthNow(),weakness:r.weakness||'',attendance:{},monthlyAttendance:r.monthly_attendance||{},portalId:r.portal_id||'',portalLinked:!!r.portal_id};
+        t.students.push(st);
+      }
+
+      const sidList=t.students.map(s=>s.id).filter(isUUID);
+      if(sidList.length){
+        const {data:att,error:ae}=await sb.from('attendance').select('*').eq('teacher_id',t.id);
+        if(ae) throw ae;
+        for(const a of (att||[])){
+          const st=t.students.find(x=>String(x.id)===String(a.student_id));
+          if(st) st.attendance[String(a.attendance_date)]=a.status;
+        }
+
+        const {data:fees,error:fe}=await sb.from('fee_transactions').select('*').eq('teacher_id',t.id);
+        if(fe) throw fe;
+        for(const f of (fees||[])) t.transactions.push({id:String(f.id),studentId:String(f.student_id),month:f.billing_month||'',amount:Number(f.amount)||0,date:f.payment_date||'',mode:f.payment_mode||'Cash',txn:f.transaction_number||'',remarks:f.remarks||'',createdAt:f.created_at||''});
+
+        const {data:copies,error:ce}=await sb.from('copy_checkins').select('*').eq('teacher_id',t.id);
+        if(ce) throw ce;
+        for(const c of (copies||[])){
+          let item=t.copyCheckins.find(x=>String(x.date)===String(c.check_date)&&String(x.chapter)===String(c.chapter||'')&&String(x.subject)===String(c.subject||''));
+          if(!item){item={id:String(c.id),chapter:c.chapter||'',subject:c.subject||'',date:c.check_date||'',exercise:c.exercise||'',records:[]};t.copyCheckins.push(item);}
+          item.records.push({studentId:String(c.student_id),status:c.status||'Pending',remarks:c.remarks||'',_rowId:String(c.id)});
+        }
+
+        const {data:weak,error:we}=await sb.from('weakness_notes').select('*').eq('teacher_id',t.id);
+        if(we) throw we;
+        for(const w of (weak||[])){const st=t.students.find(x=>String(x.id)===String(w.student_id));if(st){st.weakness=w.note||'';st._weaknessId=String(w.id);}}
+      }
+
+      const {data:ots,error:oe}=await sb.from('offline_tests').select('*').eq('teacher_id',t.id);
+      if(oe) throw oe;
+      const {data:om,error:ome}=await sb.from('offline_marks').select('*').in('offline_test_id',(ots||[]).map(x=>x.id).filter(isUUID));
+      if(ome && (ots||[]).length) throw ome;
+      t.offlineMarks=(ots||[]).map(ot=>({id:String(ot.id),title:ot.title||'',subject:ot.subject||'',maxMarks:Number(ot.total_marks)||0,date:ot.test_date||'',remarks:ot.remarks||'',scores:(om||[]).filter(m=>String(m.offline_test_id)===String(ot.id)).map(m=>({studentId:String(m.student_id),score:Number(m.marks)||0,remarks:m.remarks||''}))}));
+
+      const {data:projects,error:proje}=await sb.from('projects').select('*').eq('teacher_id',t.id);
+      if(proje) throw proje;
+      const {data:pr,error:pre}=await sb.from('project_records').select('*').in('project_id',(projects||[]).map(x=>x.id).filter(isUUID));
+      if(pre && (projects||[]).length) throw pre;
+      t.projects=(projects||[]).map(x=>({id:String(x.id),title:x.title||'',subject:x.subject||'',date:x.assigned_date||'',deadline:x.deadline||'',description:x.description||'',records:(pr||[]).filter(r=>String(r.project_id)===String(x.id)).map(r=>({studentId:String(r.student_id),status:r.status||'Not Started',grade:r.grade||'',marks:r.marks??'',remarks:r.remarks||''}))}));
+
+      const {data:diaries,error:de}=await sb.from('diary').select('*').eq('teacher_id',t.id);
+      if(de) throw de;
+      t.diary=(diaries||[]).map(d=>({id:String(d.id),date:d.diary_date||'',content:d.content||'',createdAt:d.created_at||''}));
+
+      const {data:mats,error:me}=await sb.from('study_materials').select('*').eq('teacher_id',t.id);
+      if(me) throw me;
+      db.materials=(mats||[]).map(m=>({id:String(m.id),teacherId:String(m.teacher_id),title:m.title||'',subject:m.subject||'General',className:m.class_name||'',chapter:m.chapter||'',access:m.is_public===false?'paid':'public',content:m.description||m.file_url||'',fileUrl:m.file_url||'',status:m.status||'published',createdAt:m.created_at||''}));
+
+      const {data:tests,error:te}=await sb.from('tests').select('*').eq('teacher_id',t.id);
+      if(te) throw te;
+      db.tests=(tests||[]).map(x=>({id:String(x.id),teacherId:String(x.teacher_id),title:x.title||'',subject:x.subject||'',duration:Number(x.duration_minutes||x.duration)||15,status:x.status||'pending',questions:Array.isArray(x.questions)?x.questions:[],createdAt:x.created_at||'',approvedAt:x.approved_at||''}));
+
+      const {data:results,error:re}=await sb.from('test_results').select('*').in('test_id',(tests||[]).map(x=>x.id).filter(isUUID));
+      if(re && (tests||[]).length) throw re;
+      db.testResults=(results||[]).map(r=>({id:String(r.id),testId:String(r.test_id),studentId:String(r.student_id),score:Number(r.score)||0,total:Number(r.total)||0,userAnswers:r.user_answers||{},tabSwitches:Number(r.tab_switches)||0,autoSubmitted:!!r.auto_submitted,submittedAt:r.submitted_at||''}));
+
+      const {data:queries,error:qe}=await sb.from('support_queries').select('*').eq('role','Student');
+      if(qe) throw qe;
+      db.userQueries=(queries||[]).filter(x=>t.students.some(st=>String(st.id)===String(x.student_id))).map(x=>({id:String(x.id),userId:x.user_id||'',role:x.role||'',studentId:x.student_id||'',category:x.category||'General Support',message:x.message||'',status:x.status||'open',adminReply:x.admin_reply||'',createdAt:x.created_at||'',resolvedAt:x.resolved_at||''}));
+
+      try{const {data:stories}=await sb.from('stories').select('*');db.stories=(stories||[]).map(x=>({id:String(x.id),title:x.title||'',text:x.content||x.text||'',moral:x.moral||'',createdAt:x.created_at||''}));}catch(e){console.warn('Stories load skipped:',e.message);}
+      if(!db.stories?.length) db.stories=createDefaultDB().stories;
+    }else if(user?.role==='student'){
+      /* Student portal: identify the student profile, then load only linked records. */
+      const {data:profiles,error:pe}=await sb.from('profiles').select('*').eq('id',String(user.id)).limit(1);
+      if(pe) throw pe;
+      const p=profiles?.[0]; if(!p) throw new Error('Student profile could not be loaded.');
+      const sidCode=p.student_code||p.contact||p.id;
+      const {data:rows,error:se}=await sb.from('students').select('*').eq('portal_id',sidCode);
+      if(se) throw se;
+      db.students=[{id:String(sidCode),_profileId:String(p.id),name:p.full_name||'',contact:p.contact||p.phone||'',pin:String(p.pin||''),registeredAt:p.created_at||today(),teacherIds:[],profile:{}}];
+      const linked=rows||[];
+      const teacherIds=[...new Set(linked.map(x=>x.teacher_id).filter(isUUID))];
+      db.teachers=[];
+      for(const tid of teacherIds){
+        const {data:tp}=await sb.from('profiles').select('id,full_name,contact,phone').eq('id',tid).limit(1);
+        const teacher=tp?.[0]; if(teacher) db.teachers.push({id:String(teacher.id),_profileId:String(teacher.id),name:teacher.full_name||'',contact:teacher.contact||teacher.phone||'',pin:'',students:[],transactions:[],diary:[],offlineMarks:[],copyCheckins:[],projects:[],profile:{}});
+      }
+      const studentIds=linked.map(x=>x.id).filter(isUUID);
+      const stRows=linked;
+      if(studentIds.length){
+        const {data:att,error:ae}=await sb.from('attendance').select('*').in('student_id',studentIds); if(ae) throw ae;
+        db.studentAttendance=att||[];
+        const {data:results,error:re}=await sb.from('test_results').select('*').in('student_id',studentIds); if(re) throw re;
+        db.testResults=(results||[]).map(r=>({id:String(r.id),testId:String(r.test_id),studentId:String(r.student_id),score:Number(r.score)||0,total:Number(r.total)||0,userAnswers:r.user_answers||{},tabSwitches:Number(r.tab_switches)||0,autoSubmitted:!!r.auto_submitted,submittedAt:r.submitted_at||''}));
+        const {data:tests,error:te}=await sb.from('tests').select('*').eq('status','approved'); if(te) throw te;
+        db.tests=(tests||[]).map(x=>({id:String(x.id),teacherId:String(x.teacher_id),title:x.title||'',subject:x.subject||'',duration:Number(x.duration_minutes||x.duration)||15,status:x.status||'approved',questions:Array.isArray(x.questions)?x.questions:[],createdAt:x.created_at||'',approvedAt:x.approved_at||''}));
+      }
     }
-
-    const fees=await q('fee_transactions','*');
-    for(const f of fees){
-      const t=db.teachers.find(x=>String(x.id)===String(f.teacher_id)); if(!t) continue;
-      t.transactions.push({id:String(f.id),studentId:String(f.student_id),month:f.billing_month||'',amount:Number(f.amount)||0,date:f.payment_date||'',mode:f.payment_mode||'Cash',txn:f.transaction_number||'',remarks:f.remarks||'',createdAt:f.created_at||''});
-    }
-
-    const mats=await q('study_materials','*');
-    db.materials=mats.map(m=>({id:String(m.id),teacherId:String(m.teacher_id),title:m.title||'',subject:m.subject||'General',className:m.class_name||'',chapter:m.chapter||'',access:m.is_public===false?'paid':'public',content:m.description||m.file_url||'',fileUrl:m.file_url||'',status:m.status||'published',createdAt:m.created_at||''}));
-
-    const tests=await q('tests','*');
-    db.tests=tests.map(t=>({id:String(t.id),teacherId:String(t.teacher_id),title:t.title||'',subject:t.subject||'',duration:Number(t.duration_minutes||t.duration)||15,status:t.status||'pending',questions:Array.isArray(t.questions)?t.questions:[],createdAt:t.created_at||'',approvedAt:t.approved_at||''}));
-
-    const results=await q('test_results','*');
-    db.testResults=results.map(r=>({id:String(r.id),testId:String(r.test_id),studentId:String(r.student_id),score:Number(r.score)||0,total:Number(r.total)||0,userAnswers:r.user_answers||{},tabSwitches:Number(r.tab_switches)||0,autoSubmitted:!!r.auto_submitted,submittedAt:r.submitted_at||''}));
-
-    const offlineTests=await q('offline_tests','*');
-    const offlineMarks=await q('offline_marks','*');
-    for(const ot of offlineTests){
-      const t=db.teachers.find(x=>String(x.id)===String(ot.teacher_id)); if(!t) continue;
-      const rows=offlineMarks.filter(m=>String(m.offline_test_id)===String(ot.id));
-      t.offlineMarks.push({id:String(ot.id),title:ot.title||'',subject:ot.subject||'',maxMarks:Number(ot.total_marks)||0,date:ot.test_date||'',remarks:ot.remarks||'',scores:rows.map(m=>({studentId:String(m.student_id),score:Number(m.marks)||0,remarks:m.remarks||''}))});
-    }
-
-    const copies=await q('copy_checkins','*');
-    for(const c of copies){
-      const t=db.teachers.find(x=>String(x.id)===String(c.teacher_id)); if(!t) continue;
-      let item=t.copyCheckins.find(x=>String(x._date||x.date)===String(c.check_date) && String(x.chapter)===String(c.chapter||'') && String(x.subject)===String(c.subject||''));
-      if(!item){ item={id:String(c.id),chapter:c.chapter||'',subject:c.subject||'',date:c.check_date||'',records:[]}; t.copyCheckins.push(item); }
-      item.records.push({studentId:String(c.student_id),status:c.status||'Pending',remarks:c.remarks||''});
-    }
-
-    const projects=await q('projects','*');
-    const projectRows=await q('project_records','*');
-    for(const p of projects){
-      const t=db.teachers.find(x=>String(x.id)===String(p.teacher_id)); if(!t) continue;
-      t.projects.push({id:String(p.id),title:p.title||'',subject:p.subject||'',date:p.assigned_date||'',deadline:p.deadline||'',description:p.description||'',records:projectRows.filter(r=>String(r.project_id)===String(p.id)).map(r=>({studentId:String(r.student_id),status:r.status||'Not Started',grade:r.grade||'',marks:r.marks??'',remarks:r.remarks||''}))});
-    }
-
-    const diaries=await q('diary','*');
-    for(const d of diaries){ const t=db.teachers.find(x=>String(x.id)===String(d.teacher_id)); if(t) t.diary.push({id:String(d.id),date:d.diary_date||'',content:d.content||'',createdAt:d.created_at||''}); }
-
-    const weaknesses=await q('weakness_notes','*');
-    for(const w of weaknesses){ const t=db.teachers.find(x=>String(x.id)===String(w.teacher_id)); const s=t?.students.find(x=>String(x.id)===String(w.student_id)); if(s) s.weakness=w.note||''; }
-
-    const queries=await q('support_queries','*');
-    db.userQueries=queries.map(x=>({id:String(x.id),userId:x.user_id||'',role:x.role||'',studentId:x.student_id||'',category:x.category||'General Support',message:x.message||'',status:x.status||'open',adminReply:x.admin_reply||'',createdAt:x.created_at||'',resolvedAt:x.resolved_at||''}));
-
-    try{ db.stories=await q('stories','*').then(rows=>rows.map(x=>({id:String(x.id),title:x.title||'',text:x.content||x.text||'',moral:x.moral||'',createdAt:x.created_at||''}))); }catch(e){ console.warn('Stories table unavailable:',e.message); }
-    if(!db.stories?.length) db.stories=createDefaultDB().stories;
-
-    /* Preserve current app settings from the local UI cache. */
-    db.schemaVersion=6;
-    REL_V6.loaded=true;
-    saveLocal();
-    refreshAllViews();
+    db.schemaVersion=6; REL_V6.loaded=true; saveLocal(); refreshAllViews();
   }catch(e){
     console.error('Relational load failed:',e);
-    safeAlert('Supabase relational data could not be loaded. Check table names/RLS.\n\n'+(e.message||e));
+    safeAlert('Supabase data could not be loaded. Check RLS/permissions for the logged-in account.\n\n'+(e.message||e));
   }
 }
 
@@ -4741,15 +4767,23 @@ async function save(){
 
 async function syncFromCloud(alertUser=false){
   if(!sb) return;
-  await loadRelationalData();
-  if(alertUser) safeAlert('Relational Supabase data synced successfully.');
+  try{
+    if(currentUser && currentUser.role!=='admin') await loadRelationalData({user:currentUser});
+    else await loadRelationalData({publicOnly:true});
+    if(alertUser) safeAlert('Relational Supabase data synced successfully.');
+  }catch(e){
+    console.error('Cloud sync failed:',e);
+    if(alertUser) safeAlert('Cloud sync failed: '+(e.message||e));
+  }
 }
 
 async function initCloud(){
   if(!window.supabase) return;
   try{
     sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
-    await loadRelationalData();
+    /* Public startup is intentionally read-only and does not touch protected tables. */
+    if(currentUser && currentUser.role!=='admin') await loadRelationalData({user:currentUser});
+    else await loadRelationalData({publicOnly:true});
   }catch(e){ console.warn('Relational cloud initialisation failed:',e); }
 }
 
@@ -4815,20 +4849,28 @@ async function executeLogin(){
   const role=$('loginRole').value, secret=$('loginSecret').value.trim(), uid=$('loginUserId').value.trim();
   if(!secret) return setError('Enter your PIN/password.');
   try{
+    if(!sb) return setError('Cloud connection is not ready. Please refresh the page.');
     if(role==='admin'){
-      /* Admin credentials are intentionally not read from a public data row. */
       const adminPin=db.security?.adminPin||'ADMIN2026';
       if(secret!==adminPin) return setError('Incorrect Admin PIN.');
       currentUser={role:'admin',id:'admin',name:'Master Administrator'};
     }else if(role==='teacher'){
       const norm=cleanPhone(uid);
-      const t=db.teachers.find(x=>cleanPhone(x.contact||x.id)===norm && String(x.pin||'')===secret);
-      if(!t) return setError('Invalid Teacher Mobile/ID or PIN.');
-      currentUser={role:'teacher',id:String(t.id),name:t.name,contact:t.contact};
+      const {data,error}=await sb.from('profiles').select('id,role,full_name,phone,contact,pin').eq('role','teacher').or(`contact.eq.${norm},phone.eq.${norm}`).limit(5);
+      if(error) throw error;
+      const p=(data||[]).find(x=>String(x.pin||'')===secret);
+      if(!p) return setError('Invalid Teacher Mobile/ID or PIN.');
+      currentUser={role:'teacher',id:String(p.id),name:p.full_name||'',contact:p.contact||p.phone||''};
+      await loadRelationalData({user:currentUser});
     }else{
-      const s=db.students.find(x=>String(x.id).toUpperCase()===uid.toUpperCase() && String(x.pin||'')===secret);
-      if(!s) return setError('Invalid Student ID or PIN.');
-      currentUser={role:'student',id:String(s.id),name:s.name,contact:s.contact};
+      const code=uid.toUpperCase();
+      const {data,error}=await sb.from('profiles').select('id,role,full_name,phone,contact,student_code,pin').eq('role','student').or(`student_code.eq.${code},contact.eq.${uid}`).limit(5);
+      if(error) throw error;
+      const p=(data||[]).find(x=>String(x.pin||'')===secret);
+      if(!p) return setError('Invalid Student ID or PIN.');
+      const sid=p.student_code||p.contact||p.id;
+      currentUser={role:'student',id:String(p.id),studentCode:String(sid),name:p.full_name||'',contact:p.contact||p.phone||''};
+      await loadRelationalData({user:currentUser});
     }
     sessionStorage.setItem('edu_user',JSON.stringify(currentUser));
     closeLoginModal(); updateAuthUI(); switchTab(currentUser.role==='student'?'tests':'workspace');
