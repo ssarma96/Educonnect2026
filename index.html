@@ -150,6 +150,36 @@ footer {
     gap: 10px;
   }
 }
+
+/* ===== EduConnect Animated Sign In / Sign Up ===== */
+.auth-container{position:relative;width:100%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 14px 28px rgba(0,0,0,.25),0 10px 10px rgba(0,0,0,.22);min-height:500px}
+.auth-form-container{position:absolute;top:0;height:100%;transition:all .6s ease-in-out;box-sizing:border-box}
+.sign-in-container{left:0;width:50%;z-index:2}
+.sign-up-container{left:0;width:50%;opacity:0;z-index:1;pointer-events:none}
+.auth-container.right-panel-active .sign-in-container{transform:translateX(100%)}
+.auth-container.right-panel-active .sign-up-container{transform:translateX(100%);opacity:1;z-index:5;pointer-events:auto;animation:authShow .6s}
+@keyframes authShow{0%,49%{opacity:0;z-index:1}50%,100%{opacity:1;z-index:5}}
+.auth-overlay-container{position:absolute;top:0;left:50%;width:50%;height:100%;overflow:hidden;transition:transform .6s ease-in-out;z-index:100}
+.auth-container.right-panel-active .auth-overlay-container{transform:translateX(-100%)}
+.auth-overlay{background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);color:#fff;position:relative;left:-100%;height:100%;width:200%;transform:translateX(0);transition:transform .6s ease-in-out}
+.auth-container.right-panel-active .auth-overlay{transform:translateX(50%)}
+.auth-overlay-panel{position:absolute;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:0 40px;text-align:center;top:0;height:100%;width:50%;box-sizing:border-box;transition:transform .6s ease-in-out}
+.auth-overlay-left{transform:translateX(-20%)}
+.auth-container.right-panel-active .auth-overlay-left{transform:translateX(0)}
+.auth-overlay-right{right:0;transform:translateX(0)}
+.auth-container.right-panel-active .auth-overlay-right{transform:translateX(20%)}
+.auth-overlay-panel h2{color:#fff!important}
+.auth-overlay-panel p{color:#fff}
+ .auth-mobile-switch{display:none;text-align:center;margin:12px 0 0;font-size:12px;color:#64748b}
+ .auth-mobile-switch button{border:0;background:none;color:var(--brand);font-weight:700;cursor:pointer;padding:0}
+ .auth-form-container input,.auth-form-container select{box-sizing:border-box}
+@media(max-width:700px){
+ .auth-container{min-height:650px}
+ .auth-overlay-container{display:none}
+ .auth-form-container.sign-in-container,.auth-form-container.sign-up-container{width:100%;left:0}
+ .auth-container.right-panel-active .sign-in-container{transform:translateX(-100%)}
+ .auth-container.right-panel-active .sign-up-container{transform:translateX(0)}
+}
 </style>
 </head>
 <body>
@@ -1092,57 +1122,63 @@ footer {
   </div>
 </div>
 
-<!-- AUTH MODAL (LOGIN) -->
-<div id="loginModal" class="modal"><div class="modalbox" style="max-width:390px">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="margin:0">Account Login</h3><button class="btn light btn-sm" onclick="closeLoginModal()">✕</button></div>
-  <label>Login Role</label>
-  <select id="loginRole" onchange="toggleLoginRoleUI()">
-    <option value="student">Student Portal</option>
-    <option value="teacher">Teacher Workspace</option>
-    <option value="admin">Platform Administrator</option>
-  </select>
-  <div id="loginFieldIdWrapper" style="margin-top:8px">
-    <label id="loginIdLabel">Unique Student ID or Mobile Number</label>
-    <input id="loginUserId" placeholder="e.g. EDU-XXXXXX or 10-digit Mobile">
-  </div>
-  <div style="margin-top:8px"><label id="loginSecretLabel">PIN / Password</label><input id="loginSecret" type="password"></div>
-  <div style="text-align:right;margin-top:6px">
-    <a href="javascript:void(0)" onclick="openForgotPinModal()" style="font-size:12px;color:var(--brand);text-decoration:none;font-weight:600">Forgot PIN?</a>
-  </div>
-  <button class="btn green" style="width:100%;margin-top:12px" onclick="executeLogin()">Secure Login</button>
-  <p id="loginErrorMsg" style="color:var(--red);font-size:12px;font-weight:700;display:none;margin-top:8px"></p>
-</div></div>
-
-<!-- FORGOT PIN POPUP MODAL -->
-<div id="forgotPinModal" class="modal">
-  <div class="modalbox" style="max-width:380px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <h3 style="margin:0">Forgot PIN Assistance</h3>
-      <button class="btn light btn-sm" onclick="closeForgotPinModal()">✕</button>
+<!-- UNIFIED ANIMATED AUTHENTICATION MODAL -->
+<div id="authAnimatedModal" class="modal">
+  <div class="modalbox" style="max-width:760px;padding:0;overflow:hidden;background:transparent;box-shadow:none">
+    <div style="text-align:right;margin-bottom:6px">
+      <button class="btn light btn-sm" onclick="closeAuthModal()">✕ Close</button>
     </div>
-    <p class="muted" style="font-size:12px;margin:0 0 10px 0">Enter your registered 10-digit mobile number. A reset request will be routed directly to the Administrator.</p>
-    
-    <label>Registered Mobile Number</label>
-    <input id="fpMobileInput" placeholder="Enter 10-digit mobile number" maxlength="10">
+    <div class="auth-container" id="authContainerMain">
+      <div class="auth-form-container sign-up-container" style="padding:26px 30px;display:flex;flex-direction:column;justify-content:center">
+        <h3 style="margin:0 0 10px;color:var(--brand)">Create Account</h3>
+        <label>Register As</label>
+        <select id="regRole" onchange="toggleSignupRoleUI()" style="margin-bottom:7px">
+          <option value="student">Student</option><option value="teacher">Teacher</option>
+        </select>
+        <label>Full Name *</label><input id="regName" style="margin-bottom:7px">
+        <label>Mobile / Contact *</label><input id="regContact" inputmode="numeric" maxlength="10" style="margin-bottom:7px">
+        <label>Security PIN (6 Digits) *</label><input id="regPin" type="password" inputmode="numeric" maxlength="6" style="margin-bottom:7px">
+        <label style="color:var(--brand)">Referral Password *</label><input id="regReferral" placeholder="Admin Pass" style="margin-bottom:10px">
+        <button class="btn green" style="width:100%" onclick="executeSignup()">Register & Generate</button>
+        <p id="signupErrorMsg" style="color:var(--red);font-size:12px;font-weight:700;display:none;margin-top:6px"></p>
+        <p class="auth-mobile-switch">Already have an account? <button type="button" onclick="showAuthSignIn()">Sign In</button></p>
+      </div>
 
-    <button class="btn green" style="width:100%;margin-top:14px" onclick="submitForgotPinRequest()">Send Request to Administrator</button>
+      <div class="auth-form-container sign-in-container" style="padding:30px;display:flex;flex-direction:column;justify-content:center">
+        <h3 style="margin:0 0 10px;color:var(--brand)">Account Login</h3>
+        <label>Login Role</label>
+        <select id="loginRole" onchange="toggleLoginRoleUI()" style="margin-bottom:8px">
+          <option value="student">Student Portal</option><option value="teacher">Teacher Workspace</option><option value="admin">Platform Administrator</option>
+        </select>
+        <div id="loginFieldIdWrapper" style="margin-bottom:8px">
+          <label id="loginIdLabel">Student ID or Mobile</label>
+          <input id="loginUserId" placeholder="EDU-XXXXXX or 10-digit Mobile">
+        </div>
+        <label id="loginSecretLabel">PIN / Password</label>
+        <input id="loginSecret" type="password" inputmode="numeric" maxlength="20" style="margin-bottom:4px">
+        <div style="text-align:right;margin-bottom:10px"><a href="javascript:void(0)" onclick="openForgotPinModal();closeAuthModal()" style="font-size:12px;color:var(--brand);text-decoration:none;font-weight:600">Forgot PIN?</a></div>
+        <button class="btn green" style="width:100%" onclick="executeLogin()">Secure Login</button>
+        <p id="loginErrorMsg" style="color:var(--red);font-size:12px;font-weight:700;display:none;margin-top:6px"></p>
+        <p class="auth-mobile-switch">New to EduConnect? <button type="button" onclick="showAuthSignUp()">Create Account</button></p>
+      </div>
+
+      <div class="auth-overlay-container">
+        <div class="auth-overlay">
+          <div class="auth-overlay-panel auth-overlay-left">
+            <h2 style="margin-bottom:8px">Welcome Back!</h2>
+            <p style="font-size:13px;margin-bottom:20px;opacity:.9">To keep connected with EduConnect, sign in with your registered mobile/ID and PIN.</p>
+            <button class="btn light" id="slideSignInBtn" style="border-radius:20px;padding:8px 24px">Sign In</button>
+          </div>
+          <div class="auth-overlay-panel auth-overlay-right">
+            <h2 style="margin-bottom:8px">Hello, Friend!</h2>
+            <p style="font-size:13px;margin-bottom:20px;opacity:.9">Create your EduConnect account and start your learning journey.</p>
+            <button class="btn light" id="slideSignUpBtn" style="border-radius:20px;padding:8px 24px">Sign Up</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
-
-<!-- AUTH MODAL (SIGNUP) -->
-<div id="signupModal" class="modal"><div class="modalbox" style="max-width:430px">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="margin:0">Create Account</h3><button class="btn light btn-sm" onclick="closeSignupModal()">✕</button></div>
-  <label>Register As</label>
-  <select id="regRole" onchange="toggleSignupRoleUI()">
-    <option value="student">Student</option>
-    <option value="teacher">Teacher</option>
-  </select>
-  <div style="margin-top:8px"><label>Full Name *</label><input id="regName"></div>
-  <div style="margin-top:8px"><label>Mobile / Contact *</label><input id="regContact"></div>
-  <div style="margin-top:8px"><label>Set Security PIN (4-6 Digits) *</label><input id="regPin" type="password" maxlength="6"></div>
-  <div style="margin-top:8px"><label style="color:var(--brand)">Referral Password (Required) *</label><input id="regReferral" placeholder="Enter security pass provided by Admin"></div>
-  <button class="btn green" style="width:100%;margin-top:14px" onclick="executeSignup()">Register & Generate Workspace</button>
-</div></div>
 
 <!-- RECEIPT MODAL -->
 <div id="receiptModal" class="modal"><div class="modalbox" style="max-width:460px">
@@ -1343,6 +1379,12 @@ function loadLocal(){
     if (userSession) currentUser = JSON.parse(userSession);
   } catch(e){ currentUser = null; }
 }
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const c=$('authContainerMain');
+  if($('slideSignUpBtn')) $('slideSignUpBtn').addEventListener('click',showAuthSignUp);
+  if($('slideSignInBtn')) $('slideSignInBtn').addEventListener('click',showAuthSignIn);
+});
 
 async function initCloud(){
   if (!window.supabase) return;
@@ -1775,21 +1817,31 @@ function switchStudentPortalSub(viewId){
   if(viewId === 'view-sp-queries') renderStudentQueriesList();
 }
 
-function openLoginModal(defaultRole){
-  if (defaultRole) $('loginRole').value=defaultRole;
-  toggleLoginRoleUI();
-  setError('');
-  $('loginUserId').value='';
-  $('loginSecret').value='';
-  $('loginModal').classList.add('show');
+function showAuthSignIn(){
+  const c=$('authContainerMain');
+  if(c) c.classList.remove('right-panel-active');
 }
-function closeLoginModal(){ $('loginModal').classList.remove('show'); }
+function showAuthSignUp(){
+  const c=$('authContainerMain');
+  if(c) c.classList.add('right-panel-active');
+}
+
+function openLoginModal(defaultRole){
+  if(defaultRole) $('loginRole').value=defaultRole;
+  toggleLoginRoleUI(); setError('');
+  $('loginUserId').value=''; $('loginSecret').value='';
+  $('authContainerMain').classList.remove('right-panel-active');
+  $('authAnimatedModal').classList.add('show');
+}
 function openSignupModal(){
   $('regName').value=''; $('regContact').value=''; $('regPin').value=''; $('regReferral').value='';
   toggleSignupRoleUI();
-  $('signupModal').classList.add('show');
+  $('authContainerMain').classList.add('right-panel-active');
+  $('authAnimatedModal').classList.add('show');
 }
-function closeSignupModal(){ $('signupModal').classList.remove('show'); }
+function closeAuthModal(){ $('authAnimatedModal').classList.remove('show'); }
+function closeLoginModal(){ closeAuthModal(); }
+function closeSignupModal(){ closeAuthModal(); }
 
 function toggleLoginRoleUI(){
   const r=$('loginRole').value;
@@ -4828,12 +4880,34 @@ async function executeLogin(){
     if(role==='admin'){
       email='admin@educonnect2026.com';
     }else{
-      const {data,error}=await sb.rpc('lookup_login_email',{p_role:role,p_identifier:identifier});
+      if(role!=='admin'){
+      const normalized=cleanPhone(identifier);
+      if(role==='student' && !/^EDU-/i.test(identifier) && !validPhone(normalized)) return setError('Enter a valid Student ID or 10-digit mobile number.');
+      if(role==='teacher' && !validPhone(normalized)) return setError('Enter a valid 10-digit teacher mobile number.');
+      if(/^EDU-/i.test(identifier)){
+        const {data:p,error:pe}=await sb.from('profiles').select('phone').eq('student_code',identifier.toUpperCase()).maybeSingle();
+        if(pe) throw pe; if(!p?.phone) return setError('Student account not found.');
+        const {data,error}=await sb.auth.signInWithPassword({phone:p.phone,password:secret});
+        if(error) throw error;
+        if(!data.user) throw new Error('Authentication failed.');
+        const {data:profile,error:pr}=await sb.from('profiles').select('id,role,full_name,phone,contact,student_code').eq('id',data.user.id).maybeSingle();
+        if(pr) throw pr; if(!profile) throw new Error('Authenticated account has no EduConnect profile.');
+        currentUser={role:profile.role,id:String(profile.id),authId:String(profile.id),name:profile.full_name||'',contact:profile.contact||profile.phone||'',studentCode:profile.student_code||''};
+        await loadRelationalData();
+        if(currentUser.role==='student'){const ps=db.students.find(x=>String(x._profileId)===String(currentUser.authId));if(ps?._relId)currentUser.id=String(ps._relId);}
+        sessionStorage.setItem('edu_user',JSON.stringify(currentUser)); closeAuthModal(); updateAuthUI(); switchTab('tests'); return;
+      }
+      const {data,error}=await sb.auth.signInWithPassword({phone:normalized,password:secret});
       if(error) throw error;
-      email=data||'';
-      if(!email) return setError('Account not found. Please check your ID/mobile number.');
+      if(!data.user) throw new Error('Authentication failed.');
+      const {data:profile,error:pe}=await sb.from('profiles').select('id,role,full_name,phone,contact,student_code').eq('id',data.user.id).maybeSingle();
+      if(pe) throw pe; if(!profile) throw new Error('Authenticated account has no EduConnect profile.');
+      currentUser={role:profile.role,id:String(profile.id),authId:String(profile.id),name:profile.full_name||'',contact:profile.contact||profile.phone||'',studentCode:profile.student_code||''};
+      await loadRelationalData();
+      if(currentUser.role==='student'){const ps=db.students.find(x=>String(x._profileId)===String(currentUser.authId));if(ps?._relId)currentUser.id=String(ps._relId);}
+      sessionStorage.setItem('edu_user',JSON.stringify(currentUser)); closeAuthModal(); updateAuthUI(); switchTab(currentUser.role==='student'?'tests':'workspace'); return;
     }
-    const {data,error}=await sb.auth.signInWithPassword({email,password:secret});
+    const {data,error}=await sb.auth.signInWithPassword({email:'admin@educonnect2026.com',password:secret});
     if(error) throw error;
     if(!data.user) throw new Error('Authentication failed.');
     const {data:profile,error:pe}=await sb.from('profiles').select('id,role,full_name,phone,contact,student_code').eq('id',data.user.id).maybeSingle();
@@ -4863,12 +4937,10 @@ async function executeSignup(){
   const expected=role==='teacher'?(db.security?.teacherRef||'TEACH2026'):(db.security?.studentRef||'STUD2026');
   if(ref!==expected) return safeAlert('Invalid referral password.');
   try{
-    const emailBase=role==='teacher' ? `teacher_${contact}` : `student_${contact}`;
-    const email=`${emailBase}@educonnect2026.com`;
-    const {data,error}=await sb.auth.signUp({email,password:pin,options:{data:{role,full_name:name,phone:contact}}});
+    const {data,error}=await sb.auth.signUp({phone:contact,password:pin,options:{data:{role,full_name:name,phone:contact}}});
     if(error) throw error;
     if(!data.user) throw new Error('Account could not be created.');
-    if(!data.session) throw new Error('Account created, but Supabase email confirmation is enabled. Disable email confirmation in Supabase Auth settings, then try again.');
+    if(!data.session) throw new Error('Account created, but phone verification is enabled. Disable phone confirmation in Supabase Auth settings for PIN-only login, then try again.');
 
     let studentCode=null;
     if(role==='student') studentCode=uniqueStudentPortalId();
