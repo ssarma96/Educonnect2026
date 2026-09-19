@@ -520,7 +520,6 @@ footer {
   .footer-bottom { flex-direction: column; text-align: center; gap: 10px; }
 }
 
-/* ANIMATED CONTAINER STYLES */
 .auth-container {
   position: relative;
   width: 100%;
