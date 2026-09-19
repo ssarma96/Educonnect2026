@@ -1,3 +1,29 @@
+// --- YAHAN SE SHURU KAREIN (Line 1 of app.js) ---
+window.openLoginModal = function(defaultRole) {
+  const roleEl = document.getElementById('loginRole');
+  if (defaultRole && roleEl) roleEl.value = defaultRole;
+  if (typeof toggleLoginRoleUI === 'function') toggleLoginRoleUI();
+  const container = document.getElementById('authContainerMain');
+  if (container) container.classList.remove('right-panel-active');
+  const modal = document.getElementById('authAnimatedModal');
+  if (modal) modal.classList.add('show');
+};
+
+window.openSignupModal = function() {
+  if (typeof toggleSignupRoleUI === 'function') toggleSignupRoleUI();
+  const container = document.getElementById('authContainerMain');
+  if (container) container.classList.add('right-panel-active');
+  const modal = document.getElementById('authAnimatedModal');
+  if (modal) modal.classList.add('show');
+};
+
+window.closeAuthModal = function() {
+  const modal = document.getElementById('authAnimatedModal');
+  if (modal) modal.classList.remove('show');
+};
+window.closeLoginModal = window.closeAuthModal;
+window.closeSignupModal = window.closeAuthModal;
+// --- BAAKI PURANA app.js CODE ISKE NEECHE RAHEGA ---
 const $ = id => document.getElementById(id);
 
 const SUPABASE_URL = 'https://iheqzqoqukiqkypsuzlt.supabase.co';
