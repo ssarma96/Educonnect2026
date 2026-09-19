@@ -252,7 +252,7 @@
             <h3 style="margin:0">Admin Command Center</h3>
             <small class="muted">Governance, accounts, queries & security</small>
           </div>
-          <button class="btn green btn-sm" onclick="syncFromCloud(true)">🔄 Sync Cloud</button>
+          <button class="btn green btn-sm" onclick="syncFromCloud(true)">🔄 Sync Database</button>
         </div>
       </div>
 
@@ -321,10 +321,9 @@
             </div>
           </div>
 
-          <!-- DYNAMIC CORPORATE FOOTER & LEGAL POLICIES MANAGER -->
           <div class="card" style="box-shadow:none;border:1px dashed #cbd5e1;padding:12px;margin-bottom:14px">
             <h4 style="margin:0 0 6px 0">🏛️ Institute Contact & Footer Details (Admin Only)</h4>
-            <p class="muted" style="font-size:12px;margin:0 0 10px 0">Update the corporate contact card, physical address, support email, and operational hours displayed in the website footer.</p>
+            <p class="muted" style="font-size:12px;margin:0 0 10px 0">Update the contact card, physical address, support email, and operational hours displayed in the website footer.</p>
             
             <div class="grid g2">
               <div><label>Registered Entity Name</label><input id="admInstName"></div>
@@ -379,7 +378,7 @@
           <div><h2 id="teacherGreeting" style="margin:0">Teacher Workspace</h2><small class="muted" id="teacherSubId"></small></div>
           <div style="display:flex;gap:6px">
             <button class="btn orange btn-sm" onclick="openRolloverModal()">🌸 Session Rollover</button>
-            <button class="btn green btn-sm" onclick="syncFromCloud(true)">🔄 Sync Cloud</button>
+            <button class="btn green btn-sm" onclick="syncFromCloud(true)">🔄 Sync Database</button>
           </div>
         </div>
         <div class="stats" style="margin-top:12px">
@@ -494,7 +493,7 @@
             <div id="teacherStudentsList" class="grid g2 bounded-card-list"></div>
           </div>
 
-          <!-- INNER 2: ATTENDANCE WITH SEPARATE MODES & FILTERS -->
+          <!-- INNER 2: ATTENDANCE -->
           <div id="view-st-att" style="display:none">
             <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
               <button id="attFilterAllBtn" class="btn btn-sm" onclick="setAttendanceCategoryFilter('all')">All Attendance</button>
@@ -509,7 +508,6 @@
               </div>
             </div>
 
-            <!-- TUITION / COMBINED DAILY ROSTER -->
             <div id="attDailyContainer">
               <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
                 <div style="display:flex;gap:8px;align-items:center">
@@ -531,7 +529,6 @@
               <div id="attendanceMonthlySummaryBox" class="tablewrap"></div>
             </div>
 
-            <!-- SCHOOL AGGREGATE REGISTER MODE -->
             <div id="attSchoolAggregateContainer" style="display:none">
               <div class="card" style="box-shadow:none;border:1px dashed #cbd5e1;background:#f8fafc;padding:12px;margin-bottom:10px">
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -562,7 +559,6 @@
                 <div><label>Test Date</label><input id="offlineTestDate" type="date"></div>
               </div>
 
-              <!-- FILTER BAR FOR OFFLINE MARKS -->
               <div style="display:flex;gap:8px;margin:14px 0 10px 0;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0">
                 <label style="margin:0;font-size:12px;font-weight:700">Filter Batch:</label>
                 <button id="omFilterAllBtn" class="btn btn-sm" onclick="setOfflineMarksCategoryFilter('all')">All</button>
@@ -1034,7 +1030,6 @@
   <div id="receiptArea"></div>
 </div></div>
 
-<!-- SCRIPT FILE LINK -->
 <script src="app.js"></script>
 </body>
 </html>
