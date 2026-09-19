@@ -1,4 +1,4 @@
-// --- YAHAN SE SHURU KAREIN (Line 1 of app.js) ---
+// ================= GLOBAL WINDOW BINDINGS =================
 window.openLoginModal = function(defaultRole) {
   const roleEl = document.getElementById('loginRole');
   if (defaultRole && roleEl) roleEl.value = defaultRole;
@@ -23,7 +23,8 @@ window.closeAuthModal = function() {
 };
 window.closeLoginModal = window.closeAuthModal;
 window.closeSignupModal = window.closeAuthModal;
-// --- BAAKI PURANA app.js CODE ISKE NEECHE RAHEGA ---
+
+// ================= APP LOGIC =================
 const $ = id => document.getElementById(id);
 
 const SUPABASE_URL = 'https://iheqzqoqukiqkypsuzlt.supabase.co';
@@ -300,7 +301,6 @@ function switchTeacherSub(subId){
   document.querySelectorAll('#teacherWorkspace .public-nav button').forEach(b=>{
     b.classList.toggle('active', (b.getAttribute('onclick')||'').includes(subId));
   });
-  if (subId === 't-queries') renderTeacherQueriesList();
 }
 
 function switchStudentInner(viewId){
@@ -310,14 +310,6 @@ function switchStudentInner(viewId){
   document.querySelectorAll('#t-students .sub-nav button').forEach(b=>{
     b.classList.toggle('active', (b.getAttribute('onclick')||'').includes(viewId));
   });
-  if(viewId==='view-st-att') {
-    populateAttendanceClassFilterDropdown(getActiveTeacher());
-    renderAttendanceUI(getActiveTeacher());
-  }
-  if(viewId==='view-st-marks') {
-    populateOfflineMarksClassFilterDropdown(getActiveTeacher());
-    renderOfflineMarksUI(getActiveTeacher());
-  }
 }
 
 function switchAcademicInner(viewId){
@@ -356,32 +348,7 @@ function switchStudentPortalSub(viewId){
   document.querySelectorAll('#studentTestUnlocked .sub-nav button').forEach(b => {
     b.classList.toggle('active', (b.getAttribute('onclick') || '').includes(viewId));
   });
-  if(viewId === 'view-sp-report') renderStudentPerformanceReport();
-  if(viewId === 'view-sp-profile') populateStudentSelfProfile();
-  if(viewId === 'view-sp-queries') renderStudentQueriesList();
 }
-
-/* AUTH MODALS */
-function openLoginModal(defaultRole) {
-  if (defaultRole && $('loginRole'))$('loginRole').value = defaultRole;
-  toggleLoginRoleUI();
-  setError('');
-  if ($('loginUserId'))$('loginUserId').value = '';
-  if ($('loginSecret'))$('loginSecret').value = '';
-  $('authContainerMain')?.classList.remove('right-panel-active');$('authAnimatedModal')?.classList.add('show');
-}
-
-function openSignupModal() {
-  if ($('regName'))$('regName').value = '';
-  if ($('regContact'))$('regContact').value = '';
-  if ($('regPin'))$('regPin').value = '';
-  if ($('regReferral'))$('regReferral').value = '';
-  toggleSignupRoleUI();
-  $('authContainerMain')?.classList.add('right-panel-active');$('authAnimatedModal')?.classList.add('show');
-}
-function closeAuthModal() { $('authAnimatedModal')?.classList.remove('show'); }
-function closeLoginModal() { closeAuthModal(); }
-function closeSignupModal() { closeAuthModal(); }
 
 function toggleLoginRoleUI(){
   const r = $('loginRole')?.value || 'student';
@@ -428,8 +395,7 @@ async function executeSignup(){
     };
 
     if (sb) {
-      const { error } = await sb.from('profiles').insert([newTeacher]);
-      if (error) console.warn('Supabase profiles insert error:', error.message);
+      await sb.from('profiles').insert([newTeacher]);
     }
 
     state.teachers.push({ ...newTeacher, profile: newTeacher.profile_data, students:[], transactions:[], diary:[] });
@@ -447,8 +413,7 @@ async function executeSignup(){
     };
 
     if (sb) {
-      const { error } = await sb.from('profiles').insert([newStudent]);
-      if (error) console.warn('Supabase profiles insert error:', error.message);
+      await sb.from('profiles').insert([newStudent]);
     }
 
     state.students.push({ ...newStudent, profile: newStudent.profile_data });
@@ -753,16 +718,12 @@ function setStudentCategoryFilter(cat) {
 function onStudentClassFilterChange() {
   renderTeacherStudentsUI(getActiveTeacher());
 }
-function setAttendanceCategoryFilter(cat) {
-  currentAttCategoryFilter = cat;
-}
+function setAttendanceCategoryFilter(cat) { currentAttCategoryFilter = cat; }
 function onAttendanceClassFilterChange() {}
 function populateAttendanceClassFilterDropdown() {}
 function renderAttendanceUI() {}
 function renderMonthlyAttendanceReport() {}
-function setOfflineMarksCategoryFilter(cat) {
-  currentOmCategoryFilter = cat;
-}
+function setOfflineMarksCategoryFilter(cat) { currentOmCategoryFilter = cat; }
 function onOfflineMarksClassFilterChange() {}
 function populateOfflineMarksClassFilterDropdown() {}
 function renderOfflineMarksUI() {}
@@ -805,8 +766,11 @@ function renderStudentTestsUI(){
   if ($('studentMyResults')) {
     const results = (state.testResults || []).filter(r => String(r.student_id || r.studentId) === String(currentUser.id));
     $('studentMyResults').innerHTML = results.length ? `
-      <table><thead><tr><th>Test</th><th>Score</th><th>Total</th><th>Date</th></tr></thead>
-      <tbody>${results.map(r => `<tr><td><b>${esc(r.test_title \vert{}\vert{} r.testTitle \vert{}\vert{} 'Mock')}</b></td><td>${r.score}</td><td>${r.total}</td><td>${r.date || today()}</td></tr>`).join('')}</tbody></table>`
+      <table><thead><tr><th>Test</th><th>Score</th><th>Total</th><th>Percentage</th><th>Date</th></tr></thead>
+      <tbody>${results.map(r => {
+        const pct = r.total ? ((Number(r.score)/Number(r.total))*100).toFixed(1) : '0';
+        return `<tr><td><b>${esc(r.test_title || r.testTitle || 'Mock')}</b></td><td>${r.score}</td><td>${r.total}</td><td>${pct}\%</td><td>${r.date || today()}</td></tr>`;
+      }).join('')}</tbody></table>`
       : '<p class="muted">No tests attempted yet.</p>';
   }
 }
@@ -1039,7 +1003,7 @@ function populateStudentSelfProfile() {}
 function saveStudentProfileSelf() { safeAlert('Profile updated.'); }
 function saveTeacherProfileSelf() { safeAlert('Profile updated.'); }
 function renderStudentPerformanceReport() {}
-function filterMaterialsBySubject(subj) {
+function filterMaterialsBySubject() {
   switchTab('landing');
 }
 
@@ -1141,7 +1105,6 @@ function refreshAllViews(){
 
 /* INITIALIZATION HOOK */
 window.addEventListener('DOMContentLoaded', async () => {
-  // Sliding panel listeners
   const container = $('authContainerMain');
   if ($('slideSignUpBtn') && container) {$('slideSignUpBtn').onclick = () => container.classList.add('right-panel-active');
   }
