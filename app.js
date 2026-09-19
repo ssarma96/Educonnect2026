@@ -24,10 +24,10 @@ window.closeAuthModal = function() {
 window.closeLoginModal = window.closeAuthModal;
 window.closeSignupModal = window.closeAuthModal;
 
- ================= APP LOGIC =================
+// ================= APP LOGIC =================
 const $ = id => document.getElementById(id);
 
-const SUPABASE_URL = 'https:iheqzqoqukiqkypsuzlt.supabase.co';
+const SUPABASE_URL = 'https://iheqzqoqukiqkypsuzlt.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImloZXF6cW9xdWtpcWt5cHN1emx0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NzIxNDQsImV4cCI6MjEwNDA0ODE0NH0.h9BH1AGdVgqD8WUxSTnAcQacmxTWCCPO35-eJjnwLqI';
 const DEFAULT_BRAND_LOGO = 'logo.png';
 
@@ -44,9 +44,9 @@ let state = {
       officeHours: "10:00 AM to 7:00 PM (All 7 days)"
     },
     socials: {
-      telegram: "https:t.me+Y5fP8e554BhhMmNl",
-      whatsapp: "https:whatsapp.com",
-      youtube: "https:youtube.com"
+      telegram: "https://t.me/+Y5fP8e554BhhMmNl",
+      whatsapp: "https://whatsapp.com",
+      youtube: "https://youtube.com"
     },
     legal: {
       policy: "1. Fair Assessment Conduct: Students attempting online mock tests agree to maintain academic honesty.\n2. Single-user authorization keys are non-transferable.",
@@ -67,7 +67,7 @@ let state = {
   ]
 };
 
-* FILTER VARIABLES *
+// ================= FILTER VARIABLES =================
 let currentStudentCategoryFilter = 'all';
 let currentStudentClassFilter = 'all';
 let currentAttCategoryFilter = 'all';
@@ -82,7 +82,7 @@ function makeId(prefix='id'){
 }
 
 function esc(s){
-  return String(s ?? '').replace([&<>"']g, m => ({
+  return String(s ?? '').replace(/[&<>"']/g, m => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
   }[m]));
 }
@@ -101,11 +101,11 @@ function monthNow(){
 }
 
 function validPhone(v){
-  const digits = String(v||'').replace(\Dg,'');
+  const digits = String(v||'').replace(/\D/g,'');
   return digits.length === 10 || (digits.length === 12 && digits.startsWith('91'));
 }
 function cleanPhone(v){
-  let n = String(v||'').replace(\Dg,'');
+  let n = String(v||'').replace(/\D/g,'');
   if (n.length === 10) n = '91' + n;
   return n;
 }
@@ -117,7 +117,7 @@ function setError(msg){
 }
 function safeAlert(msg){ window.alert(String(msg)); }
 
-* CLOUD INITIALIZATION *
+// ================= CLOUD INITIALIZATION =================
 async function initCloud(){
   if (!window.supabase) return;
   try {
@@ -242,9 +242,9 @@ function renderFooterDynamicData() {
 
 function renderSocialLinks() {
   const soc = state.settings?.socials || {};
-  const tg = soc.telegram || "https:t.me+Y5fP8e554BhhMmNl";
-  const wa = soc.whatsapp || "https:whatsapp.com";
-  const yt = soc.youtube || "https:youtube.com";
+  const tg = soc.telegram || "https://t.me/+Y5fP8e554BhhMmNl";
+  const wa = soc.whatsapp || "https://whatsapp.com";
+  const yt = soc.youtube || "https://youtube.com";
 
   if ($('headerTgLink')) $('headerTgLink').href = tg;
   if ($('footerTgLink')) $('footerTgLink').href = tg;
@@ -258,7 +258,7 @@ function openLegalModal(type) {
   const titles = { policy: "📜 EduConnect User Policy", terms: "⚖️ Terms of Service", privacy: "🔒 Privacy & Data Protection" };
   const leg = state.settings?.legal || {};
   if ($('legalModalTitle')) $('legalModalTitle').textContent = titles[type] || 'Legal Information';
-  if ($('legalModalBody')) $('legalModalBody').innerHTML = `<p style="white-space:pre-wrap;line-height:1.7">${esc(leg[type] || 'Not specified.')}<p>`;
+  if ($('legalModalBody')) $('legalModalBody').innerHTML = `<p style="white-space:pre-wrap;line-height:1.7">${esc(leg[type] || 'Not specified.')}</p>`;
   $('legalModal')?.classList.add('show');
 }
 function closeLegalModal() { $('legalModal')?.classList.remove('show'); }
@@ -353,7 +353,7 @@ function switchStudentPortalSub(viewId){
 function toggleLoginRoleUI(){
   const r = $('loginRole')?.value || 'student';
   if ($('loginFieldIdWrapper'))$('loginFieldIdWrapper').style.display = (r === 'admin') ? 'none' : 'block';
-  if ($('loginIdLabel'))$('loginIdLabel').textContent = (r === 'student') ? 'Student ID or 10-digit Mobile' : 'Teacher Mobile  ID';
+  if ($('loginIdLabel'))$('loginIdLabel').textContent = (r === 'student') ? 'Student ID or 10-digit Mobile' : 'Teacher Mobile / ID';
   if ($('loginSecretLabel'))$('loginSecretLabel').textContent = (r === 'admin') ? 'Master Admin PIN' : 'Account Security PIN';
 }
 function toggleSignupRoleUI(){
@@ -378,7 +378,7 @@ async function executeSignup(){
 
   if(!name || !contact || !pin || !ref) return safeAlert('Please fill all required details.');
   if(!validPhone(contact)) return safeAlert('Enter a valid 10-digit mobile number.');
-  if(!^\d{4,6}$.test(pin)) return safeAlert('PIN must contain 4 to 6 digits.');
+  if(!/^\d{4,6}$/.test(pin)) return safeAlert('PIN must contain 4 to 6 digits.');
 
   if(role==='teacher'){
     if(ref !== state.settings?.security?.teacherRef) return safeAlert('Invalid Teacher Referral Password.');
@@ -432,7 +432,7 @@ function executeLogin(){
   const secret = $('loginSecret')?.value.trim();
   const uid = $('loginUserId')?.value.trim();
 
-  if(!secret) return setError('Enter your PIN  Password.');
+  if(!secret) return setError('Enter your PIN / Password.');
 
   if(role==='admin'){
     if(secret === state.settings?.security?.adminPin || secret === 'SUPER_ADMIN_RECOVER_9988'){
@@ -441,7 +441,7 @@ function executeLogin(){
   } else if(role==='teacher'){
     const norm = cleanPhone(uid);
     const t = (state.teachers || []).find(x => cleanPhone(x.id) === norm && String(x.pin) === secret);
-    if(!t) return setError('Invalid Teacher Mobile  ID or PIN.');
+    if(!t) return setError('Invalid Teacher Mobile / ID or PIN.');
     currentUser = { role:'teacher', id:String(t.id), name:t.name };
   } else {
     const normUid = uid.toUpperCase();
@@ -449,7 +449,7 @@ function executeLogin(){
     const s = (state.students || []).find(x => (
       String(x.id).toUpperCase() === normUid || (cleanMobile && cleanPhone(x.contact) === cleanMobile)
     ) && String(x.pin) === secret);
-    if(!s) return setError('Invalid Student ID  Mobile or PIN.');
+    if(!s) return setError('Invalid Student ID / Mobile or PIN.');
     currentUser = { role:'student', id:String(s.id), name:s.name };
   }
 
@@ -520,9 +520,9 @@ function updateAuthUI(){
       lockedBanner.style.display = 'block';
       unlockedArea.style.display = 'none';
       lockedBanner.innerHTML = `
-        <h3>🔒 Student Authentication Required<h3>
-        <p class="muted">Log in using your Student ID or Registered Mobile Number to access tests and reports.<p>
-        <button class="btn green" onclick="openLoginModal('student')">Login as Student<button>
+        <h3>🔒 Student Authentication Required</h3>
+        <p class="muted">Log in using your Student ID or Registered Mobile Number to access tests and reports.</p>
+        <button class="btn green" onclick="openLoginModal('student')">Login as Student</button>
       `;
     } else if (currentUser.role === 'student') {
       lockedBanner.style.display = 'none';
@@ -532,8 +532,8 @@ function updateAuthUI(){
       unlockedArea.style.display = 'none';
       lockedBanner.innerHTML = `
         <div style="max-width:540px;margin:0 auto;text-align:center">
-          <span class="pill orange">Authorized Staff Mode<span>
-          <h3 style="margin:10px 0 6px">Administrative Examination View<h3>
+          <span class="pill orange">Authorized Staff Mode</span>
+          <h3 style="margin:10px 0 6px">Administrative Examination View</h3>
           <button class="btn" onclick="switchTab('workspace')">Open Workspace ➔</button>
         </div>
       `;
@@ -575,7 +575,7 @@ function renderAdminPanel(){
       <tbody>${pending.map(t=>`
         <tr>
           <td><b>${esc(t.title)}</b></td><td><span class="pill blue">${esc(t.subject)}</span></td>
-          <td>${(t.questions\vert{}\vert{}[]).length}</td><td>${Number(t.duration)||0}m</td>
+          <td>${(t.questions \vert{}\vert{} []).length}</td><td>${Number(t.duration)||0}m</td>
           <td>
             <button class="btn green btn-sm" onclick="approveTest('${esc(t.id)}')">Approve</button>
             <button class="btn red btn-sm" onclick="deleteTestRecord('${esc(t.id)}')">Delete</button>
@@ -769,7 +769,7 @@ function renderStudentTestsUI(){
       <table><thead><tr><th>Test</th><th>Score</th><th>Total</th><th>Percentage</th><th>Date</th></tr></thead>
       <tbody>${results.map(r => {
         const pct = r.total ? ((Number(r.score)/Number(r.total))*100).toFixed(1) : '0';
-        return `<tr><td><b>${esc(r.test_title || r.testTitle || 'Mock')}</b></td><td>${r.score}</td><td>${r.total}</td><td>${pct}%</td><td>${r.date || today()}</td></tr>`;
+        return `<tr><td><b>${esc(r.test_title || r.testTitle || 'Mock')}</b></td><td>${r.score}</td><td>${r.total}</td><td>${pct}\%</td><td>${r.date || today()}</td></tr>`;
       }).join('')}</tbody></table>`
       : '<p class="muted">No tests attempted yet.</p>';
   }
@@ -1007,7 +1007,7 @@ function filterMaterialsBySubject() {
   switchTab('landing');
 }
 
-/* SUDOKU BRAIN GYM ENGINE */
+// ================= SUDOKU BRAIN GYM ENGINE =================
 const baseSudoku = [
   [5,3,4,6,7,8,9,1,2],[6,7,2,1,9,5,3,4,8],[1,9,8,3,4,2,5,6,7],
   [8,5,9,7,6,1,4,2,3],[4,2,6,8,5,3,7,9,1],[7,1,3,9,2,4,8,5,6],
@@ -1103,7 +1103,7 @@ function refreshAllViews(){
   }
 }
 
-/* INITIALIZATION HOOK */
+// ================= INITIALIZATION HOOK =================
 window.addEventListener('DOMContentLoaded', async () => {
   const container = $('authContainerMain');
   if ($('slideSignUpBtn') && container) {$('slideSignUpBtn').onclick = () => container.classList.add('right-panel-active');
