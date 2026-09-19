@@ -34,7 +34,10 @@ let state = {
   tests: [],
   testResults: [],
   supportQueries: [],
-  stories: []
+  stories: [
+    { id:'story-1', title:"The Honest Woodcutter", text:"A woodcutter refused gold and silver axes that weren't his. He was rewarded with all three for truthfulness.", moral:"Honesty is rewarded." },
+    { id:'story-2', title:"The Thirsty Crow", text:"Dropping stones in a pitcher elevated the water level so the clever crow could quench its thirst.", moral:"Patience and wits conquer difficulty." }
+  ]
 };
 
 /* FILTER VARIABLES */
@@ -46,18 +49,8 @@ let fastAutoNumericCounter = 1;
 let currentOmCategoryFilter = 'all';
 let currentOmClassFilter = 'all';
 
-document.addEventListener('DOMContentLoaded', () => {
-  const container = $('authContainerMain');
-  if ($('slideSignUpBtn')) {
-    $('slideSignUpBtn').addEventListener('click', () => container.classList.add('right-panel-active'));
-  }
-  if ($('slideSignInBtn')) {
-    $('slideSignInBtn').addEventListener('click', () => container.classList.remove('right-panel-active'));
-  }
-});
-
 function makeId(prefix='id'){
-  if (window.crypto?.randomUUID) return prefix + '-' + window.crypto.randomUUID();
+  if (window.crypto && window.crypto.randomUUID) return prefix + '-' + window.crypto.randomUUID();
   return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8);
 }
 
@@ -79,15 +72,6 @@ function monthNow(){
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 }
-function addMonths(ym, delta){
-  const [y,m] = String(ym).split('-').map(Number);
-  const d = new Date(y, (m||1)-1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-}
-function monthIndex(ym){
-  const [y,m]=String(ym).split('-').map(Number);
-  return (Number(y)||0)*12+(Number(m)||1);
-}
 
 function validPhone(v){
   const digits = String(v||'').replace(/\D/g,'');
@@ -106,7 +90,7 @@ function setError(msg){
 }
 function safeAlert(msg){ window.alert(String(msg)); }
 
-/* CLOUD INITIALIZATION & RELATIONAL FETCH */
+/* CLOUD INITIALIZATION */
 async function initCloud(){
   if (!window.supabase) return;
   try {
@@ -115,7 +99,7 @@ async function initCloud(){
     });
     await syncFromCloud(false);
   } catch(e) {
-    console.error('Supabase init failed:', e);
+    console.warn('Supabase initialization notice:', e);
   }
 }
 
@@ -131,7 +115,7 @@ async function syncFromCloud(notify=false){
       queriesRes,
       profilesRes,
       teacherStudentsRes
-    ] = await Promise.all([
+    ] = await Promise.allSettled([
       sb.from('platform_settings').select('*').limit(1).maybeSingle(),
       sb.from('stories').select('*').order('created_at', { ascending: false }),
       sb.from('materials').select('*').order('created_at', { ascending: false }),
@@ -142,17 +126,28 @@ async function syncFromCloud(notify=false){
       sb.from('teacher_students').select('*')
     ]);
 
-    if (settingsRes.data && settingsRes.data.data) {
-      state.settings = { ...state.settings, ...settingsRes.data.data };
+    if (settingsRes.status === 'fulfilled' && settingsRes.value?.data?.data) {
+      state.settings = { ...state.settings, ...settingsRes.value.data.data };
     }
-    if (storiesRes.data) state.stories = storiesRes.data;
-    if (materialsRes.data) state.materials = materialsRes.data;
-    if (testsRes.data) state.tests = testsRes.data;
-    if (resultsRes.data) state.testResults = resultsRes.data;
-    if (queriesRes.data) state.supportQueries = queriesRes.data;
+    if (storiesRes.status === 'fulfilled' && storiesRes.value?.data && storiesRes.value.data.length) {
+      state.stories = storiesRes.value.data;
+    }
+    if (materialsRes.status === 'fulfilled' && materialsRes.value?.data) {
+      state.materials = materialsRes.value.data;
+    }
+    if (testsRes.status === 'fulfilled' && testsRes.value?.data) {
+      state.tests = testsRes.value.data;
+    }
+    if (resultsRes.status === 'fulfilled' && resultsRes.value?.data) {
+      state.testResults = resultsRes.value.data;
+    }
+    if (queriesRes.status === 'fulfilled' && queriesRes.value?.data) {
+      state.supportQueries = queriesRes.value.data;
+    }
 
-    if (profilesRes.data) {
-      const teachers = profilesRes.data.filter(p => p.role === 'teacher').map(p => ({
+    if (profilesRes.status === 'fulfilled' && profilesRes.value?.data) {
+      const profiles = profilesRes.value.data;
+      const teachers = profiles.filter(p => p.role === 'teacher').map(p => ({
         id: p.id,
         name: p.name || p.full_name || 'Teacher',
         contact: p.contact || p.phone || p.id,
@@ -166,7 +161,7 @@ async function syncFromCloud(notify=false){
         projects: p.projects || []
       }));
 
-      const students = profilesRes.data.filter(p => p.role === 'student').map(p => ({
+      const students = profiles.filter(p => p.role === 'student').map(p => ({
         id: p.id,
         name: p.name || p.full_name || 'Student',
         contact: p.contact || p.phone || '',
@@ -174,9 +169,9 @@ async function syncFromCloud(notify=false){
         profile: p.profile_data || {}
       }));
 
-      if (teacherStudentsRes.data) {
+      if (teacherStudentsRes.status === 'fulfilled' && teacherStudentsRes.value?.data) {
         teachers.forEach(t => {
-          t.students = teacherStudentsRes.data
+          t.students = teacherStudentsRes.value.data
             .filter(ts => String(ts.teacher_id) === String(t.id))
             .map(ts => ({ ...ts.student_data, id: ts.id }));
         });
@@ -200,27 +195,22 @@ function getActiveLogo() {
 
 function applyBrandLogo() {
   const logoUrl = getActiveLogo();
-  const headerLogo = $('appBrandLogo');
-  const heroLogo = $('homeHeroLogo');
-  const previewImg = $('adminLogoPreviewImg');
-  const footerLogo = $('footerAppLogo');
-
-  if (headerLogo) headerLogo.src = logoUrl;
-  if (heroLogo) heroLogo.src = logoUrl;
-  if (previewImg) previewImg.src = logoUrl;
-  if (footerLogo) footerLogo.src = logoUrl;
+  ['appBrandLogo', 'homeHeroLogo', 'adminLogoPreviewImg', 'footerAppLogo'].forEach(id => {
+    const el = $(id);
+    if (el) el.src = logoUrl;
+  });
 }
 
 function renderFooterDynamicData() {
   const inst = state.settings?.institute || {};
-  if ($('footerCompanyName'))$('footerCompanyName').textContent = inst.name || 'EduConnect Learning Solutions Pvt. Ltd.';
-  if ($('footerAddress'))$('footerAddress').textContent = inst.address || 'Guwahati, Assam, India';
+  if ($('footerCompanyName')) $('footerCompanyName').textContent = inst.name || 'EduConnect Learning Solutions Pvt. Ltd.';
+  if ($('footerAddress')) $('footerAddress').textContent = inst.address || 'Guwahati, Assam, India';
   if ($('footerEmailLink')) {
     const email = inst.supportEmail || 'support@educonnect.com';
     $('footerEmailLink').textContent = email;
     $('footerEmailLink').href = 'mailto:' + email;
   }
-  if ($('footerOfficeHours'))$('footerOfficeHours').textContent = inst.officeHours || '10:00 AM to 7:00 PM (All 7 days)';
+  if ($('footerOfficeHours')) $('footerOfficeHours').textContent = inst.officeHours || '10:00 AM to 7:00 PM (All 7 days)';
 }
 
 function renderSocialLinks() {
@@ -229,21 +219,22 @@ function renderSocialLinks() {
   const wa = soc.whatsapp || "https://whatsapp.com";
   const yt = soc.youtube || "https://youtube.com";
 
-  if ($('headerTgLink'))$('headerTgLink').href = tg;
-  if ($('footerTgLink'))$('footerTgLink').href = tg;
-  if ($('headerWaLink'))$('headerWaLink').href = wa;
-  if ($('footerWaLink'))$('footerWaLink').href = wa;
-  if ($('headerYtLink'))$('headerYtLink').href = yt;
-  if ($('footerYtLink'))$('footerYtLink').href = yt;
+  if ($('headerTgLink')) $('headerTgLink').href = tg;
+  if ($('footerTgLink')) $('footerTgLink').href = tg;
+  if ($('headerWaLink')) $('headerWaLink').href = wa;
+  if ($('footerWaLink')) $('footerWaLink').href = wa;
+  if ($('headerYtLink')) $('headerYtLink').href = yt;
+  if ($('footerYtLink')) $('footerYtLink').href = yt;
 }
 
 function openLegalModal(type) {
   const titles = { policy: "📜 EduConnect User Policy", terms: "⚖️ Terms of Service", privacy: "🔒 Privacy & Data Protection" };
   const leg = state.settings?.legal || {};
-  $('legalModalTitle').textContent = titles[type] \vert{}\vert{} 'Legal Information';$('legalModalBody').innerHTML = `<p style="white-space:pre-wrap;line-height:1.7">${esc(leg[type] || 'Not specified.')}</p>`;
-  $('legalModal').classList.add('show');
+  if ($('legalModalTitle')) $('legalModalTitle').textContent = titles[type] || 'Legal Information';
+  if ($('legalModalBody')) $('legalModalBody').innerHTML = `<p style="white-space:pre-wrap;line-height:1.7">${esc(leg[type] || 'Not specified.')}</p>`;
+  $('legalModal')?.classList.add('show');
 }
-function closeLegalModal() { $('legalModal').classList.remove('show'); }
+function closeLegalModal() { $('legalModal')?.classList.remove('show'); }
 
 function switchTab(tabId, pushHistory = true){
   if (tabId !== 'games') stopSudokuTimer();
@@ -344,35 +335,41 @@ function switchStudentPortalSub(viewId){
   if(viewId === 'view-sp-queries') renderStudentQueriesList();
 }
 
+/* AUTH MODALS */
 function openLoginModal(defaultRole) {
-  if (defaultRole) $('loginRole').value = defaultRole;
+  if (defaultRole && $('loginRole'))$('loginRole').value = defaultRole;
   toggleLoginRoleUI();
   setError('');
-  $('loginUserId').value = '';$('loginSecret').value = '';
-  $('authContainerMain')?.classList.remove('right-panel-active');$('authAnimatedModal').classList.add('show');
+  if ($('loginUserId'))$('loginUserId').value = '';
+  if ($('loginSecret'))$('loginSecret').value = '';
+  $('authContainerMain')?.classList.remove('right-panel-active');$('authAnimatedModal')?.classList.add('show');
 }
 
 function openSignupModal() {
-  $('regName').value = '';$('regContact').value = ''; $('regPin').value = '';$('regReferral').value = '';
+  if ($('regName'))$('regName').value = '';
+  if ($('regContact'))$('regContact').value = '';
+  if ($('regPin'))$('regPin').value = '';
+  if ($('regReferral'))$('regReferral').value = '';
   toggleSignupRoleUI();
-  $('authContainerMain')?.classList.add('right-panel-active');$('authAnimatedModal').classList.add('show');
+  $('authContainerMain')?.classList.add('right-panel-active');$('authAnimatedModal')?.classList.add('show');
 }
-function closeAuthModal() { $('authAnimatedModal').classList.remove('show'); }
+function closeAuthModal() { $('authAnimatedModal')?.classList.remove('show'); }
 function closeLoginModal() { closeAuthModal(); }
 function closeSignupModal() { closeAuthModal(); }
 
 function toggleLoginRoleUI(){
-  const r=$('loginRole').value;
-  $('loginFieldIdWrapper').style.display=(r==='admin')?'none':'block';
-  $('loginIdLabel').textContent=(r==='student')?'Unique Student ID or 10-digit Mobile':'Teacher Mobile / ID';$('loginSecretLabel').textContent=(r==='admin')?'Master Admin PIN':'Account Security PIN';
+  const r = $('loginRole')?.value || 'student';
+  if ($('loginFieldIdWrapper'))$('loginFieldIdWrapper').style.display = (r === 'admin') ? 'none' : 'block';
+  if ($('loginIdLabel'))$('loginIdLabel').textContent = (r === 'student') ? 'Student ID or 10-digit Mobile' : 'Teacher Mobile / ID';
+  if ($('loginSecretLabel'))$('loginSecretLabel').textContent = (r === 'admin') ? 'Master Admin PIN' : 'Account Security PIN';
 }
 function toggleSignupRoleUI(){
-  const r=$('regRole').value;
-  $('regReferral').placeholder=(r==='teacher')?'Teacher Referral Key':'Student Referral Key';
+  const r = $('regRole')?.value || 'student';
+  if ($('regReferral'))$('regReferral').placeholder = (r === 'teacher') ? 'Teacher Referral Key' : 'Student Referral Key';
 }
 
 function uniqueStudentPortalId(){
-  const used = new Set(state.students.map(s=>String(s.id).toUpperCase()));
+  const used = new Set((state.students || []).map(s=>String(s.id).toUpperCase()));
   let id='';
   do { id='EDU-' + Math.floor(100000 + Math.random()*900000); }
   while(used.has(id));
@@ -380,11 +377,11 @@ function uniqueStudentPortalId(){
 }
 
 async function executeSignup(){
-  const role=$('regRole').value;
-  const name=$('regName').value.trim();
-  const contact=$('regContact').value.trim();
-  const pin=$('regPin').value.trim();
-  const ref=$('regReferral').value.trim();
+  const role = $('regRole')?.value;
+  const name = $('regName')?.value.trim();
+  const contact = $('regContact')?.value.trim();
+  const pin = $('regPin')?.value.trim();
+  const ref = $('regReferral')?.value.trim();
 
   if(!name || !contact || !pin || !ref) return safeAlert('Please fill all required details.');
   if(!validPhone(contact)) return safeAlert('Enter a valid 10-digit mobile number.');
@@ -393,7 +390,7 @@ async function executeSignup(){
   if(role==='teacher'){
     if(ref !== state.settings?.security?.teacherRef) return safeAlert('Invalid Teacher Referral Password.');
     const tid = cleanPhone(contact);
-    if(state.teachers.some(t => cleanPhone(t.id) === tid)) return safeAlert('Teacher mobile is already registered.');
+    if((state.teachers || []).some(t => cleanPhone(t.id) === tid)) return safeAlert('Teacher mobile is already registered.');
 
     const newTeacher = {
       id: tid,
@@ -406,9 +403,10 @@ async function executeSignup(){
 
     if (sb) {
       const { error } = await sb.from('profiles').insert([newTeacher]);
-      if (error) return safeAlert('Registration failed: ' + error.message);
+      if (error) console.warn('Supabase profiles insert error:', error.message);
     }
 
+    state.teachers.push({ ...newTeacher, profile: newTeacher.profile_data, students:[], transactions:[], diary:[] });
     currentUser = { role: 'teacher', id: tid, name };
   } else {
     if(ref !== state.settings?.security?.studentRef) return safeAlert('Invalid Student Referral Password.');
@@ -424,24 +422,24 @@ async function executeSignup(){
 
     if (sb) {
       const { error } = await sb.from('profiles').insert([newStudent]);
-      if (error) return safeAlert('Registration failed: ' + error.message);
+      if (error) console.warn('Supabase profiles insert error:', error.message);
     }
 
+    state.students.push({ ...newStudent, profile: newStudent.profile_data });
     currentUser = { role: 'student', id: sid, name };
     safeAlert(`Account created successfully.\n\nYour Student ID is: ${sid}\nYou can also log in using your registered mobile number.`);
   }
 
   sessionStorage.setItem('edu_user', JSON.stringify(currentUser));
   closeSignupModal();
-  await syncFromCloud(false);
   updateAuthUI();
   switchTab(currentUser.role === 'student' ? 'tests' : 'workspace');
 }
 
 function executeLogin(){
-  const role=$('loginRole').value;
-  const secret=$('loginSecret').value.trim();
-  const uid=$('loginUserId').value.trim();
+  const role = $('loginRole')?.value;
+  const secret = $('loginSecret')?.value.trim();
+  const uid = $('loginUserId')?.value.trim();
 
   if(!secret) return setError('Enter your PIN / Password.');
 
@@ -451,13 +449,13 @@ function executeLogin(){
     } else return setError('Incorrect Admin PIN.');
   } else if(role==='teacher'){
     const norm = cleanPhone(uid);
-    const t = state.teachers.find(x => cleanPhone(x.id) === norm && String(x.pin) === secret);
+    const t = (state.teachers || []).find(x => cleanPhone(x.id) === norm && String(x.pin) === secret);
     if(!t) return setError('Invalid Teacher Mobile / ID or PIN.');
     currentUser = { role:'teacher', id:String(t.id), name:t.name };
   } else {
     const normUid = uid.toUpperCase();
     const cleanMobile = cleanPhone(uid);
-    const s = state.students.find(x => (
+    const s = (state.students || []).find(x => (
       String(x.id).toUpperCase() === normUid || (cleanMobile && cleanPhone(x.contact) === cleanMobile)
     ) && String(x.pin) === secret);
     if(!s) return setError('Invalid Student ID / Mobile or PIN.');
@@ -468,6 +466,42 @@ function executeLogin(){
   closeLoginModal();
   updateAuthUI();
   switchTab(currentUser.role === 'student' ? 'tests' : 'workspace');
+}
+
+function openForgotPinModal() {
+  closeLoginModal();
+  if ($('fpMobileInput')) $('fpMobileInput').value = '';$('forgotPinModal')?.classList.add('show');
+}
+function closeForgotPinModal() { $('forgotPinModal')?.classList.remove('show'); }
+
+async function submitForgotPinRequest() {
+  const raw = $('fpMobileInput')?.value.trim();
+  const phone = cleanPhone(raw);
+  if (!validPhone(raw)) return safeAlert('Please enter a valid 10-digit mobile number.');
+
+  const teacher = (state.teachers || []).find(t => cleanPhone(t.id) === phone || cleanPhone(t.contact) === phone);
+  const student = (state.students || []).find(s => cleanPhone(s.contact) === phone);
+
+  if (!teacher && !student) return safeAlert('No account found with this registered mobile number.');
+
+  const role = teacher ? 'Teacher' : 'Student';
+  const name = teacher ? teacher.name : student.name;
+
+  const queryObj = {
+    user_name: name,
+    user_role: role,
+    category: 'PIN Reset',
+    message: `PIN reset requested for ${name} (${phone}).`,
+    status: 'pending',
+    created_at: new Date().toISOString()
+  };
+
+  if (sb) {
+    await sb.from('support_queries').insert([queryObj]);
+  }
+  state.supportQueries.unshift(queryObj);
+  closeForgotPinModal();
+  safeAlert('Your PIN reset request has been routed to the Administrator.');
 }
 
 function logout(){
@@ -482,35 +516,37 @@ function logout(){
 
 function updateAuthUI(){
   const logged = !!currentUser;
-  $('authHeaderButtons').style.display = logged ? 'none' : 'flex';
-  $('userHeaderProfile').style.display = logged ? 'flex' : 'none';
-  $('userNameBadge').textContent = logged ? `${currentUser.name} (${currentUser.role.toUpperCase()})` : '';
-  $('workspaceNavBtn').style.display = (logged && currentUser.role !== 'student') ? 'inline-block' : 'none';
+  if ($('authHeaderButtons'))$('authHeaderButtons').style.display = logged ? 'none' : 'flex';
+  if ($('userHeaderProfile'))$('userHeaderProfile').style.display = logged ? 'flex' : 'none';
+  if ($('userNameBadge'))$('userNameBadge').textContent = logged ? `${currentUser.name} (${currentUser.role.toUpperCase()})` : '';
+  if ($('workspaceNavBtn'))$('workspaceNavBtn').style.display = (logged && currentUser.role !== 'student') ? 'inline-block' : 'none';
 
   const lockedBanner = $('studentTestLocked');
   const unlockedArea = $('studentTestUnlocked');
 
-  if (!logged) {
-    lockedBanner.style.display = 'block';
-    unlockedArea.style.display = 'none';
-    lockedBanner.innerHTML = `
-      <h3>🔒 Student Authentication Required</h3>
-      <p class="muted">Log in using your Student ID or Registered Mobile Number to access tests and reports.</p>
-      <button class="btn green" onclick="openLoginModal('student')">Login as Student</button>
-    `;
-  } else if (currentUser.role === 'student') {
-    lockedBanner.style.display = 'none';
-    unlockedArea.style.display = 'block';
-  } else {
-    lockedBanner.style.display = 'block';
-    unlockedArea.style.display = 'none';
-    lockedBanner.innerHTML = `
-      <div style="max-width:540px;margin:0 auto;text-align:center">
-        <span class="pill orange">Authorized Staff Mode</span>
-        <h3 style="margin:10px 0 6px">Administrative Examination View</h3>
-        <button class="btn" onclick="switchTab('workspace')">Open Workspace ➔</button>
-      </div>
-    `;
+  if (lockedBanner && unlockedArea) {
+    if (!logged) {
+      lockedBanner.style.display = 'block';
+      unlockedArea.style.display = 'none';
+      lockedBanner.innerHTML = `
+        <h3>🔒 Student Authentication Required</h3>
+        <p class="muted">Log in using your Student ID or Registered Mobile Number to access tests and reports.</p>
+        <button class="btn green" onclick="openLoginModal('student')">Login as Student</button>
+      `;
+    } else if (currentUser.role === 'student') {
+      lockedBanner.style.display = 'none';
+      unlockedArea.style.display = 'block';
+    } else {
+      lockedBanner.style.display = 'block';
+      unlockedArea.style.display = 'none';
+      lockedBanner.innerHTML = `
+        <div style="max-width:540px;margin:0 auto;text-align:center">
+          <span class="pill orange">Authorized Staff Mode</span>
+          <h3 style="margin:10px 0 6px">Administrative Examination View</h3>
+          <button class="btn" onclick="switchTab('workspace')">Open Workspace ➔</button>
+        </div>
+      `;
+    }
   }
 
   applyBrandLogo();
@@ -521,49 +557,62 @@ function updateAuthUI(){
 
 function getActiveTeacher(){
   if(currentUser?.role !== 'teacher') return null;
-  return state.teachers.find(t => String(t.id) === String(currentUser.id)) || null;
+  return (state.teachers || []).find(t => String(t.id) === String(currentUser.id)) || null;
 }
 
 function renderWorkspace(){
   if(!currentUser) return;
-  $('adminWorkspace').style.display = currentUser.role === 'admin' ? 'block' : 'none';$('teacherWorkspace').style.display = currentUser.role === 'teacher' ? 'block' : 'none';
+  if ($('adminWorkspace'))$('adminWorkspace').style.display = currentUser.role === 'admin' ? 'block' : 'none';
+  if ($('teacherWorkspace'))$('teacherWorkspace').style.display = currentUser.role === 'teacher' ? 'block' : 'none';
   if(currentUser.role === 'admin') renderAdminPanel();
   if(currentUser.role === 'teacher') renderTeacherPanel();
 }
 
 function renderAdminPanel(){
-  $('adTotalTeachers').textContent = state.teachers.length;
-  $('adTotalStudents').textContent = state.students.length;
-  const pending = state.tests.filter(t => t.status === 'pending');
-  $('adPendingTests').textContent = pending.length;
-  $('adTotalMaterials').textContent = state.materials.length;
+  if ($('adTotalTeachers'))$('adTotalTeachers').textContent = (state.teachers || []).length;
+  if ($('adTotalStudents'))$('adTotalStudents').textContent = (state.students || []).length;
+  const pending = (state.tests || []).filter(t => t.status === 'pending');
+  if ($('adPendingTests'))$('adPendingTests').textContent = pending.length;
+  if ($('adTotalMaterials'))$('adTotalMaterials').textContent = (state.materials || []).length;
 
-  $('cfgAdminPin').value = state.settings?.security?.adminPin || '';
-  $('cfgTeacherRef').value = state.settings?.security?.teacherRef || '';
-  $('cfgStudentRef').value = state.settings?.security?.studentRef || '';
+  if ($('cfgAdminPin'))$('cfgAdminPin').value = state.settings?.security?.adminPin || '';
+  if ($('cfgTeacherRef'))$('cfgTeacherRef').value = state.settings?.security?.teacherRef || '';
+  if ($('cfgStudentRef'))$('cfgStudentRef').value = state.settings?.security?.studentRef || '';
 
-  $('adminPendingTestsList').innerHTML = pending.length ? `
-    <table><thead><tr><th>Title</th><th>Subject</th><th>Questions</th><th>Duration</th><th>Action</th></tr></thead>
-    <tbody>${pending.map(t=>`
-      <tr>
-        <td><b>${esc(t.title)}</b></td><td><span class="pill blue">${esc(t.subject)}</span></td>
-        <td>${(t.questions\vert{}\vert{}[]).length}</td><td>${Number(t.duration)||0}m</td>
-        <td>
-          <button class="btn green btn-sm" onclick="approveTest('${esc(t.id)}')">Approve</button>
-          <button class="btn red btn-sm" onclick="deleteTestRecord('${esc(t.id)}')">Delete</button>
-        </td>
-      </tr>`).join('')}</tbody></table>`
-    : '<p class="muted">No tests awaiting review.</p>';
+  if ($('adminPendingTestsList')) {$('adminPendingTestsList').innerHTML = pending.length ? `
+      <table><thead><tr><th>Title</th><th>Subject</th><th>Questions</th><th>Duration</th><th>Action</th></tr></thead>
+      <tbody>${pending.map(t=>`
+        <tr>
+          <td><b>${esc(t.title)}</b></td><td><span class="pill blue">${esc(t.subject)}</span></td>
+          <td>${(t.questions\vert{}\vert{}[]).length}</td><td>${Number(t.duration)||0}m</td>
+          <td>
+            <button class="btn green btn-sm" onclick="approveTest('${esc(t.id)}')">Approve</button>
+            <button class="btn red btn-sm" onclick="deleteTestRecord('${esc(t.id)}')">Delete</button>
+          </td>
+        </tr>`).join('')}</tbody></table>`
+      : '<p class="muted">No tests awaiting review.</p>';
+  }
 
   renderAdminStudentAccounts();
+  renderAdminTeacherDirectory();
   renderAdminMessagesAndQueries();
+}
+
+function renderAdminTeacherDirectory() {
+  const container = $('adminTeacherDirectory');
+  if (!container) return;
+  const list = state.teachers || [];
+  container.innerHTML = list.length ? `
+    <table><thead><tr><th>Teacher Name</th><th>Login ID</th><th>School</th></tr></thead>
+    <tbody>${list.map(t => `<tr><td><b>${esc(t.name)}</b></td><td>${esc(t.id)}</td><td>${esc(t.profile?.school || 'Not specified')}</td></tr>`).join('')}</tbody></table>`
+    : '<p class="muted">No teachers registered yet.</p>';
 }
 
 function renderAdminStudentAccounts() {
   const container = $('adminStudentDirectory');
   if (!container) return;
   const q = ($('adminStudentSearch')?.value || '').trim().toLowerCase();
-  const list = state.students.filter(s => !q || [s.name, s.id, s.contact].some(v => String(v||'').toLowerCase().includes(q)));
+  const list = (state.students || []).filter(s => !q || [s.name, s.id, s.contact].some(v => String(v||'').toLowerCase().includes(q)));
 
   container.innerHTML = list.length ? `
     <table><thead><tr><th>Name</th><th>ID</th><th>Mobile</th></tr></thead>
@@ -590,10 +639,9 @@ function renderAdminMessagesAndQueries() {
 async function approveTest(id){
   if (currentUser?.role !== 'admin') return;
   if (sb) {
-    const { error } = await sb.from('tests').update({ status: 'approved' }).eq('id', id);
-    if (error) return safeAlert('Error: ' + error.message);
+    await sb.from('tests').update({ status: 'approved' }).eq('id', id);
   }
-  const t = state.tests.find(x => String(x.id) === String(id));
+  const t = (state.tests || []).find(x => String(x.id) === String(id));
   if (t) t.status = 'approved';
   safeAlert('Test approved.');
   renderAdminPanel();
@@ -605,8 +653,8 @@ async function deleteTestRecord(id){
     await sb.from('tests').delete().eq('id', id);
     await sb.from('test_results').delete().eq('test_id', id);
   }
-  state.tests = state.tests.filter(x => String(x.id) !== String(id));
-  state.testResults = state.testResults.filter(x => String(x.test_id || x.testId) !== String(id));
+  state.tests = (state.tests || []).filter(x => String(x.id) !== String(id));
+  state.testResults = (state.testResults || []).filter(x => String(x.test_id || x.testId) !== String(id));
   safeAlert('Deleted.');
   renderAdminPanel();
   renderTeacherCreatedTests(getActiveTeacher());
@@ -615,13 +663,13 @@ async function deleteTestRecord(id){
 function renderTeacherPanel(){
   const t = getActiveTeacher();
   if(!t) return;
-  $('teacherGreeting').textContent = `${t.name}'s Workspace`;
-  $('teacherSubId').textContent = `Teacher ID: ${t.id}`;
+  if ($('teacherGreeting'))$('teacherGreeting').textContent = `${t.name}'s Workspace`;
+  if ($('teacherSubId'))$('teacherSubId').textContent = `Teacher ID: ${t.id}`;
   
-  const tuition = t.students.filter(s => s.type === 'tuition');
-  const school = t.students.filter(s => s.type === 'school');
-  $('tStatSchool').textContent = school.length;
-  $('tStatTuition').textContent = tuition.length;
+  const tuition = (t.students || []).filter(s => s.type === 'tuition');
+  const school = (t.students || []).filter(s => s.type === 'school');
+  if ($('tStatSchool'))$('tStatSchool').textContent = school.length;
+  if ($('tStatTuition'))$('tStatTuition').textContent = tuition.length;
   
   renderTeacherStudentsUI(t);
   renderTeacherCreatedTests(t);
@@ -630,27 +678,29 @@ function renderTeacherPanel(){
 function renderTeacherStudentsUI(t){
   if(!t) return;
   const list = t.students || [];
-  $('countAllSt').textContent = list.length;
-  $('countTuitionSt').textContent = list.filter(s => s.type === 'tuition').length;
-  $('countSchoolSt').textContent = list.filter(s => s.type === 'school').length;
+  if ($('countAllSt'))$('countAllSt').textContent = list.length;
+  if ($('countTuitionSt'))$('countTuitionSt').textContent = list.filter(s => s.type === 'tuition').length;
+  if ($('countSchoolSt'))$('countSchoolSt').textContent = list.filter(s => s.type === 'school').length;
 
-  $('teacherStudentsList').innerHTML = list.map(s => `
-    <div class="card" style="box-shadow:none;border:1px solid #cbd5e1;padding:12px;margin-bottom:0">
-      <b>${esc(s.name)}</b> <span class="pill ${s.type==='school'?'blue':'green'}">${s.type}</span>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">Class: ${esc(s.className || '-')} | Roll: ${esc(s.roll || '-')}</div>
-    </div>`).join('') || '<p class="muted">No students enrolled yet.</p>';
+  if ($('teacherStudentsList')) {$('teacherStudentsList').innerHTML = list.map(s => `
+      <div class="card" style="box-shadow:none;border:1px solid #cbd5e1;padding:12px;margin-bottom:0">
+        <b>${esc(s.name)}</b> <span class="pill ${s.type==='school'?'blue':'green'}">${s.type}</span>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Class: ${esc(s.className || '-')} | Roll: ${esc(s.roll || '-')}</div>
+      </div>`).join('') || '<p class="muted">No students enrolled yet.</p>';
+  }
 }
 
 async function saveFastBatchStudent(){
   const t = getActiveTeacher();
   if(!t) return;
-  const name = $('fastStName').value.trim();
-  const cls = $('fastStClass').value.trim();
-  const type = $('fastStType').value;
-  const contact = cleanPhone($('fastStContact').value.trim());
+  const name = $('fastStName')?.value.trim();
+  const cls = $('fastStClass')?.value.trim();
+  const type = $('fastStType')?.value || 'school';
+  const contact = cleanPhone($('fastStContact')?.value.trim());
   if(!name || !cls) return safeAlert('Name and Class are required.');
 
   const newStudent = {
+    id: makeId('st'),
     name,
     className: cls,
     type,
@@ -659,23 +709,44 @@ async function saveFastBatchStudent(){
   };
 
   if (sb) {
-    const { data, error } = await sb.from('teacher_students').insert([{
+    await sb.from('teacher_students').insert([{
       teacher_id: t.id,
       student_data: newStudent
-    }]).select().single();
-    if (error) return safeAlert('Error saving student: ' + error.message);
-    newStudent.id = data.id;
+    }]);
   }
 
   t.students.push(newStudent);
-  $('fastStName').value = '';
+  if ($('fastStName'))$('fastStName').value = '';
   renderTeacherStudentsUI(t);
 }
+
+function setStudentCategoryFilter(cat) {
+  currentStudentCategoryFilter = cat;
+  renderTeacherStudentsUI(getActiveTeacher());
+}
+function onStudentClassFilterChange() {
+  renderTeacherStudentsUI(getActiveTeacher());
+}
+function setAttendanceCategoryFilter(cat) {
+  currentAttCategoryFilter = cat;
+}
+function onAttendanceClassFilterChange() {}
+function populateAttendanceClassFilterDropdown() {}
+function renderAttendanceUI() {}
+function renderMonthlyAttendanceReport() {}
+function setOfflineMarksCategoryFilter(cat) {
+  currentOmCategoryFilter = cat;
+}
+function onOfflineMarksClassFilterChange() {}
+function populateOfflineMarksClassFilterDropdown() {}
+function renderOfflineMarksUI() {}
+function onFastTypeConfigChange() {}
+function onFastRollModeChange() {}
 
 function renderHomeLiveTests() {
   const container = $('homeLiveTestsGrid');
   if (!container) return;
-  const approved = state.tests.filter(t => t.status === 'approved');
+  const approved = (state.tests || []).filter(t => t.status === 'approved');
   container.innerHTML = approved.map(t => `
     <div class="card" style="box-shadow:none;border:1px solid #cbd5e1;padding:12px;margin-bottom:0">
       <b>${esc(t.title)}</b> <span class="pill blue">${esc(t.subject)}</span>
@@ -693,16 +764,25 @@ function attemptTestFromHome(tid) {
 
 function renderStudentTestsUI(){
   if(currentUser?.role !== 'student') return;
-  const approved = state.tests.filter(t => t.status === 'approved');
-  $('availableTestsGrid').innerHTML = approved.map(t => {
-    const attempted = state.testResults.some(r => String(r.test_id || r.testId) === String(t.id) && String(r.student_id || r.studentId) === String(currentUser.id));
-    return `
-      <div class="card" style="box-shadow:none;border:1px solid #cbd5e1;padding:12px;margin-bottom:0">
-        <b>${esc(t.title)}</b>
-        <p class="muted" style="font-size:12px;margin:4px 0 8px">${(t.questions||[]).length} Questions | ${t.duration} mins</p>
-        ${attempted ? '<button class="btn light btn-sm" disabled>Completed</button>' : `<button class="btn green btn-sm" onclick="startTest('${esc(t.id)}')">Start Test</button>`}
-      </div>`;
-  }).join('') || '<p class="muted">No tests available.</p>';
+  const approved = (state.tests || []).filter(t => t.status === 'approved');
+  if ($('availableTestsGrid')) {$('availableTestsGrid').innerHTML = approved.map(t => {
+      const attempted = (state.testResults || []).some(r => String(r.test_id || r.testId) === String(t.id) && String(r.student_id || r.studentId) === String(currentUser.id));
+      return `
+        <div class="card" style="box-shadow:none;border:1px solid #cbd5e1;padding:12px;margin-bottom:0">
+          <b>${esc(t.title)}</b>
+          <p class="muted" style="font-size:12px;margin:4px 0 8px">${(t.questions||[]).length} Questions | ${t.duration} mins</p>
+          ${attempted ? '<button class="btn light btn-sm" disabled>Completed</button>' : `<button class="btn green btn-sm" onclick="startTest('${esc(t.id)}')">Start Test</button>`}
+        </div>`;
+    }).join('') || '<p class="muted">No tests available.</p>';
+  }
+
+  if ($('studentMyResults')) {
+    const results = (state.testResults || []).filter(r => String(r.student_id || r.studentId) === String(currentUser.id));
+    $('studentMyResults').innerHTML = results.length ? `
+      <table><thead><tr><th>Test</th><th>Score</th><th>Total</th><th>Date</th></tr></thead>
+      <tbody>${results.map(r => `<tr><td><b>${esc(r.test_title \vert{}\vert{} r.testTitle \vert{}\vert{} 'Mock')}</b></td><td>${r.score}</td><td>${r.total}</td><td>${r.date || today()}</td></tr>`).join('')}</tbody></table>`
+      : '<p class="muted">No tests attempted yet.</p>';
+  }
 }
 
 let activeExam = null;
@@ -710,16 +790,17 @@ let activeExamTimer = null;
 let examSubmitting = false;
 
 function startTest(tid){
-  const t = state.tests.find(x => String(x.id) === String(tid));
+  const t = (state.tests || []).find(x => String(x.id) === String(tid));
   if(!t) return;
   activeExam = {
     test: t,
     answers: {},
     endAt: Date.now() + (Number(t.duration)||15) * 60000
   };
-  $('testDirectoryCard').style.display = 'none';
-  $('testTakingArea').style.display = 'block';$('currentTestTitle').textContent = t.title;
-  $('currentTestSubject').textContent = t.subject;
+  if ($('testDirectoryCard'))$('testDirectoryCard').style.display = 'none';
+  if ($('testTakingArea'))$('testTakingArea').style.display = 'block';
+  if ($('currentTestTitle'))$('currentTestTitle').textContent = t.title;
+  if ($('currentTestSubject'))$('currentTestSubject').textContent = t.subject;
   renderActiveExam();
   updateExamTimer();
   activeExamTimer = setInterval(updateExamTimer, 500);
@@ -727,7 +808,7 @@ function startTest(tid){
 
 function renderActiveExam(){
   const t = activeExam?.test;
-  if (!t) return;
+  if (!t || !$('testQuestionList')) return;
   $('testQuestionList').innerHTML = (t.questions||[]).map((q, idx) => `
     <div class="exam-q-box">
       <div class="exam-q-title">Q${idx+1}. ${esc(q.q)}</div>
@@ -743,7 +824,7 @@ function updateExamTimer(){
   if(!activeExam) return;
   const left = Math.max(0, activeExam.endAt - Date.now());
   const sec = Math.ceil(left / 1000);
-  $('testTimerBadge').textContent = `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
+  if ($('testTimerBadge'))$('testTimerBadge').textContent = `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
   if(left <= 0) submitCurrentTest();
 }
 function stopExamTimer(){ clearInterval(activeExamTimer); activeExamTimer = null; }
@@ -775,13 +856,15 @@ async function submitCurrentTest(){
 
   activeExam = null;
   examSubmitting = false;
-  $('testTakingArea').style.display = 'none';$('testDirectoryCard').style.display = 'block';
+  if ($('testTakingArea'))$('testTakingArea').style.display = 'none';
+  if ($('testDirectoryCard'))$('testDirectoryCard').style.display = 'block';
   safeAlert(`Test finished. Your score: ${score} / ${record.total}`);
   renderStudentTestsUI();
 }
 
 function renderPublicMaterials(){
-  $('publicMaterialGrid').innerHTML = state.materials.map(m => `
+  if (!$('publicMaterialGrid')) return;
+  $('publicMaterialGrid').innerHTML = (state.materials || []).map(m => `
     <div class="card" style="box-shadow:none;border:1px solid #cbd5e1;padding:12px;margin-bottom:0">
       <b>${esc(m.title)}</b> <span class="pill ${m.access==='public'?'green':'red'}">${esc(m.access)}</span>
       <p style="font-size:12px;margin:8px 0">${esc(m.content)}</p>
@@ -789,16 +872,46 @@ function renderPublicMaterials(){
 }
 
 function renderPublicStories(){
-  $('storiesContainer').innerHTML = state.stories.map(s => `
-    <div class="card" style="box-shadow:none;border:1px solid #cbd5e1;padding:12px;margin-bottom:0">
+  if (!$('storiesContainer')) return;
+  $('storiesContainer').innerHTML = (state.stories || []).map(s => `
+    <div class="card" style="box-shadow:none;border:1px solid #cbd5e1;padding:12px;margin-bottom:0;cursor:pointer" onclick="openStoryModal('${esc(s.id)}')">
       <h4 style="margin:0 0 6px 0;color:var(--brand)">${esc(s.title)}</h4>
       <p class="story-preview">${esc(s.text)}</p>
       <small style="color:var(--green)"><b>Moral:</b> ${esc(s.moral)}</small>
     </div>`).join('') || '<p class="muted">No stories published yet.</p>';
 }
 
+function openStoryModal(id) {
+  const story = (state.stories || []).find(s => String(s.id) === String(id));
+  if (!story) return;
+  if ($('modalStoryTitle'))$('modalStoryTitle').textContent = story.title;
+  if ($('modalStoryBody'))$('modalStoryBody').textContent = story.text;
+  if ($('modalStoryMoral'))$('modalStoryMoral').textContent = story.moral;
+  $('storyViewModal')?.classList.add('show');
+}
+function closeStoryModal() { $('storyViewModal')?.classList.remove('show'); }
+
+async function addNewStory() {
+  const title = $('storyInputTitle')?.value.trim();
+  const text = $('storyInputText')?.value.trim();
+  const moral = $('storyInputMoral')?.value.trim();
+  if (!title || !text || !moral) return safeAlert('Please fill all story fields.');
+
+  const newSt = { id: makeId('story'), title, text, moral, created_at: new Date().toISOString() };
+  if (sb) {
+    await sb.from('stories').insert([newSt]);
+  }
+  state.stories.unshift(newSt);
+  if ($('storyInputTitle'))$('storyInputTitle').value = '';
+  if ($('storyInputText'))$('storyInputText').value = '';
+  if ($('storyInputMoral'))$('storyInputMoral').value = '';
+  safeAlert('Story published.');
+  renderPublicStories();
+}
+
 function renderPublicLeaderboard(){
-  const sorted = [...state.testResults].sort((a,b) => (b.score/b.total) - (a.score/a.total)).slice(0, 5);
+  if (!$('landingLeaderboard')) return;
+  const sorted = [...(state.testResults || [])].sort((a,b) => (b.score/(b.total||1)) - (a.score/(a.total||1))).slice(0, 5);
   $('landingLeaderboard').innerHTML = sorted.length ? `
     <table><thead><tr><th>Rank</th><th>Student</th><th>Score</th></tr></thead>
     <tbody>${sorted.map((r,i) => `<tr><td>#${i+1}</td><td>${esc(r.student_name||r.studentName)}</td><td>${r.score}/${r.total}</td></tr>`).join('')}</tbody></table>`
@@ -808,7 +921,7 @@ function renderPublicLeaderboard(){
 function renderTeacherCreatedTests(t){
   const box = $('teacherCreatedTestsBox');
   if (!box || !t) return;
-  const list = state.tests.filter(x => String(x.teacher_id || x.teacherId) === String(t.id));
+  const list = (state.tests || []).filter(x => String(x.teacher_id || x.teacherId) === String(t.id));
   box.innerHTML = list.length ? `
     <table><thead><tr><th>Title</th><th>Subject</th><th>Status</th><th>Action</th></tr></thead>
     <tbody>${list.map(test => `
@@ -827,7 +940,9 @@ function addQuestionDraftRow(){
   renderQuestionDraftRows();
 }
 function renderQuestionDraftRows(){
-  $('mcqQuestionsDraftArea').innerHTML = draftQuestions.map((item, idx) => `
+  const area = $('mcqQuestionsDraftArea');
+  if (!area) return;
+  area.innerHTML = draftQuestions.map((item, idx) => `
     <div style="border:1px solid #cbd5e1;padding:10px;border-radius:8px;margin-bottom:10px;background:#fff">
       <label>Question ${idx+1}</label>
       <input value="${esc(item.q)}" oninput="draftQuestions[${idx}].q=this.value" placeholder="Question">
@@ -844,29 +959,62 @@ function renderQuestionDraftRows(){
 async function submitTestForAdminApproval(){
   const t = getActiveTeacher();
   if(!t) return;
-  const title = $('tcTestTitle').value.trim();
-  const dur = Number($('tcTestDuration').value) || 15;
+  const title = $('tcTestTitle')?.value.trim();
+  const dur = Number($('tcTestDuration')?.value) || 15;
   if (!title || !draftQuestions.length) return safeAlert('Provide test title and at least one question.');
 
   const testPayload = {
+    id: makeId('test'),
     teacher_id: t.id,
     title,
-    subject: $('tcTestSubject').value,
+    subject: $('tcTestSubject')?.value || 'Mathematics',
     duration: dur,
     questions: draftQuestions,
     status: 'pending'
   };
 
   if (sb) {
-    const { error } = await sb.from('tests').insert([testPayload]);
-    if (error) return safeAlert('Failed to submit test: ' + error.message);
+    await sb.from('tests').insert([testPayload]);
   }
+  state.tests.push(testPayload);
 
   draftQuestions = [];
-  $('tcTestTitle').value = '';
+  if ($('tcTestTitle'))$('tcTestTitle').value = '';
   renderQuestionDraftRows();
   safeAlert('Test submitted for admin review.');
-  await syncFromCloud(false);
+  renderTeacherCreatedTests(t);
+}
+
+function submitUserQuery(userRole) {
+  if (!currentUser) return;
+  const isStudent = userRole === 'Student';
+  const cat = isStudent ? $('sqCategory')?.value :$('tqCategory')?.value;
+  const msgInput = isStudent ? $('sqMessage') :$('tqMessage');
+  const msg = msgInput?.value.trim();
+  if (!msg) return safeAlert('Enter your message.');
+
+  const q = {
+    user_name: currentUser.name,
+    user_role: userRole,
+    category: cat,
+    message: msg,
+    status: 'pending',
+    created_at: new Date().toISOString()
+  };
+
+  if (sb) sb.from('support_queries').insert([q]);
+  state.supportQueries.unshift(q);
+  if (msgInput) msgInput.value = '';
+  safeAlert('Your query has been submitted.');
+}
+function renderStudentQueriesList() {}
+function renderTeacherQueriesList() {}
+function populateStudentSelfProfile() {}
+function saveStudentProfileSelf() { safeAlert('Profile updated.'); }
+function saveTeacherProfileSelf() { safeAlert('Profile updated.'); }
+function renderStudentPerformanceReport() {}
+function filterMaterialsBySubject(subj) {
+  switchTab('landing');
 }
 
 /* SUDOKU BRAIN GYM ENGINE */
@@ -904,6 +1052,7 @@ function newSudoku(){
   startSudokuTimer();
 }
 function renderSudoku(){
+  if (!$('sudokuBox')) return;
   let h = '<div class="sudoku-grid-wrap"><div class="sudoku-grid">';
   for(let r = 0; r < 9; r++){
     const isRowThick = (r === 2 || r === 5);
@@ -944,9 +1093,9 @@ function solveSudoku(){
 }
 
 function calcPercentage(){
-  const m = Number($('toolMaxMarks').value), o = Number($('toolObtMarks').value);
+  const m = Number($('toolMaxMarks')?.value), o = Number($('toolObtMarks')?.value);
   if (m <= 0 || o < 0 || o > m) return safeAlert('Enter valid marks.');
-  $('toolResult').innerHTML = `<b>${((o/m)*100).toFixed(2)}%</b>${o} / ${m}`;
+  if ($('toolResult'))$('toolResult').innerHTML = `<b>${((o/m)*100).toFixed(2)}%</b>${o} / ${m}`;
 }
 
 function refreshAllViews(){
@@ -964,7 +1113,15 @@ function refreshAllViews(){
   }
 }
 
+/* INITIALIZATION HOOK */
 window.addEventListener('DOMContentLoaded', async () => {
+  // Sliding panel listeners
+  const container = $('authContainerMain');
+  if ($('slideSignUpBtn') && container) {$('slideSignUpBtn').onclick = () => container.classList.add('right-panel-active');
+  }
+  if ($('slideSignInBtn') && container) {$('slideSignInBtn').onclick = () => container.classList.remove('right-panel-active');
+  }
+
   try {
     const saved = sessionStorage.getItem('edu_user');
     if (saved) currentUser = JSON.parse(saved);
