@@ -1,4 +1,3 @@
-// ================= GLOBAL WINDOW BINDINGS =================
 window.openLoginModal = function(defaultRole) {
   const roleEl = document.getElementById('loginRole');
   if (defaultRole && roleEl) roleEl.value = defaultRole;
@@ -24,7 +23,6 @@ window.closeAuthModal = function() {
 window.closeLoginModal = window.closeAuthModal;
 window.closeSignupModal = window.closeAuthModal;
 
-// ================= APP LOGIC =================
 const $ = id => document.getElementById(id);
 
 const SUPABASE_URL = 'https://iheqzqoqukiqkypsuzlt.supabase.co';
@@ -67,7 +65,6 @@ let state = {
   ]
 };
 
-// ================= FILTER VARIABLES =================
 let currentStudentCategoryFilter = 'all';
 let currentStudentClassFilter = 'all';
 let currentAttCategoryFilter = 'all';
@@ -117,7 +114,6 @@ function setError(msg){
 }
 function safeAlert(msg){ window.alert(String(msg)); }
 
-// ================= CLOUD INITIALIZATION =================
 async function initCloud(){
   if (!window.supabase) return;
   try {
@@ -1007,7 +1003,6 @@ function filterMaterialsBySubject() {
   switchTab('landing');
 }
 
-// ================= SUDOKU BRAIN GYM ENGINE =================
 const baseSudoku = [
   [5,3,4,6,7,8,9,1,2],[6,7,2,1,9,5,3,4,8],[1,9,8,3,4,2,5,6,7],
   [8,5,9,7,6,1,4,2,3],[4,2,6,8,5,3,7,9,1],[7,1,3,9,2,4,8,5,6],
@@ -1103,7 +1098,6 @@ function refreshAllViews(){
   }
 }
 
-// ================= INITIALIZATION HOOK =================
 window.addEventListener('DOMContentLoaded', async () => {
   const container = $('authContainerMain');
   if ($('slideSignUpBtn') && container) {$('slideSignUpBtn').onclick = () => container.classList.add('right-panel-active');
