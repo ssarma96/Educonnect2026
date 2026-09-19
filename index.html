@@ -4826,7 +4826,7 @@ async function executeLogin(){
   try{
     let email='';
     if(role==='admin'){
-      email='admin@educonnect.local';
+      email='admin@educonnect2026.com';
     }else{
       const {data,error}=await sb.rpc('lookup_login_email',{p_role:role,p_identifier:identifier});
       if(error) throw error;
@@ -4864,7 +4864,7 @@ async function executeSignup(){
   if(ref!==expected) return safeAlert('Invalid referral password.');
   try{
     const emailBase=role==='teacher' ? `teacher_${contact}` : `student_${contact}`;
-    const email=`${emailBase}@educonnect.local`;
+    const email=`${emailBase}@educonnect2026.com`;
     const {data,error}=await sb.auth.signUp({email,password:pin,options:{data:{role,full_name:name,phone:contact}}});
     if(error) throw error;
     if(!data.user) throw new Error('Account could not be created.');
